@@ -1,0 +1,29 @@
+OASISFormat: 0.4
+Name:        Miniliom
+Version:     0.1
+Synopsis:    Path description for urls.
+Authors:     Gabriel Radanne <drupyog@zoho.com>
+License:     MIT
+Plugins:     META (0.3), DevFiles (0.3)
+
+AlphaFeatures: pure_interface
+BuildTools: ocamlbuild
+
+OCamlVersion: >= 4.01
+AlphaFeatures: ocamlbuild_more_args
+
+Library path
+  Path: src
+  BuildDepends: uri
+  Modules: Path
+
+AlphaFeatures: ocamlbuild_more_args
+Document api
+  Type: ocamlbuild (0.3)
+  BuildTools: ocamldoc
+
+  Title: API reference for Path
+  XOCamlbuildPath: .
+  XOCamlbuildExtraArgs:
+    "-docflags '-colorize-code -short-functors -charset utf-8'"
+  XOCamlbuildLibraries: path
