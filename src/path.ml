@@ -1,12 +1,17 @@
 
-type ('a, 'b) conv = {
-  of_ : 'b -> 'a;
-  to_ : 'a -> 'b
-}
+module Conv = struct
 
-let id x = x
+  type ('a, 'b) t = {
+    of_ : 'b -> 'a;
+    to_ : 'a -> 'b
+  }
 
-let conv_id = { of_ = id ; to_ = id }
+  let id =
+    let id x = x in
+    { of_ = id ; to_ = id }
+
+end
+
 
 type ('a,'b) sum = L of 'a | R of 'b
 
@@ -29,7 +34,7 @@ type ('ret, 'fu, 'retc, 'converter) query =
   | Cons : (string * 'a atom * ('r, 'f, 'rc, 'c) query)
     -> ('r, 'a -> 'f, 'rc, 'c) query
   | Conv : (string * 'a atom * ('r, 'f, 'rc, 'c) query)
-    -> ('r, 'b -> 'f, 'rc, ('a, 'b) conv -> 'c) query
+    -> ('r, 'b -> 'f, 'rc, ('a, 'b) Conv.t -> 'c) query
 
 let ( ** ) (n,x) y = Cons (n,x, y)
 let ( **? ) (n,x) y = Conv (n,x,y)
@@ -43,7 +48,7 @@ type ('return, 'fu, 'returnc, 'converter) path =
     -> ('r, 'f, 'rc, 'c) path
   | SuffixAtom : (('a -> 'r, 'f, 'rc, 'c) path * 'a atom)
     -> ('r, 'f, 'rc, 'c) path
-  | SuffixConv : (('b -> 'r, 'f, ('a, 'b) conv -> 'rc, 'c) path * 'a atom)
+  | SuffixConv : (('b -> 'r, 'f, ('a, 'b) Conv.t -> 'rc, 'c) path * 'a atom)
     -> ('r, 'f, 'rc, 'c) path
 
 
@@ -56,11 +61,11 @@ let (~/) x = Rel/x
 
 type (_,_) convlist =
   | Nil : ('a,'a) convlist
-  | Conv : ('a, 'b) conv * ('r, 'l) convlist -> ('r, ('a, 'b) conv -> 'l) convlist
+  | Conv : ('a, 'b) Conv.t * ('r, 'l) convlist -> ('r, ('a, 'b) Conv.t -> 'l) convlist
 
 type (_,_) vonclist =
   | Nil : ('a, 'a) vonclist
-  | Vonc : ('a, 'b) conv * (('a, 'b) conv -> 'r, 'l) vonclist -> ('r, 'l) vonclist
+  | Vonc : ('a, 'b) Conv.t * (('a, 'b) Conv.t -> 'r, 'l) vonclist -> ('r, 'l) vonclist
 
 let rec vonc_conv
   : type c rc xc.
@@ -183,7 +188,7 @@ let eval (Uri (c,l)) = eval_conv c l
 
 (* www.bla.com/foo/%i/bla/%f?truc=%s *)
 let u = ~/"foo"/!Int/"bla"/!Float/?("truc", Star Int)**?("a", String)**Nil
-let u = finalize u conv_id
+let u = finalize u Conv.id
 let s = eval u
 
 let uri = s 3 5. [1;2] "bla"
