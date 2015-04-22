@@ -4,4 +4,5 @@ B _build/**
 PKG uri
 
 FLG -w +A-4-6-9-40-42-44
+FLG -w -32-34-37
 FLG -strict_sequence -safe_string

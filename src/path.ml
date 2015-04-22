@@ -36,11 +36,6 @@ type ('ret, 'fu, 'retc, 'converter) query =
   | Conv : (string * 'a atom * ('r, 'f, 'rc, 'c) query)
     -> ('r, 'b -> 'f, 'rc, ('a, 'b) Conv.t -> 'c) query
 
-let ( ** ) (n,x) y = Cons (n,x, y)
-let ( **? ) (n,x) y = Conv (n,x,y)
-let nil = Nil
-
-
 type ('return, 'fu, 'returnc, 'converter) path =
   | Host : string -> ('r,'r,'rc, 'rc) path
   | Rel : ('r,'r,'rc, 'rc) path
@@ -51,13 +46,25 @@ type ('return, 'fu, 'returnc, 'converter) path =
   | SuffixConv : (('b -> 'r, 'f, ('a, 'b) Conv.t -> 'rc, 'c) path * 'a atom)
     -> ('r, 'f, 'rc, 'c) path
 
+type ('r, 'f, 'rc, 'c) conv_uri =
+  | Conv_uri :
+      ( ('x, 'f, 'xc, 'c) path * ('r, 'x, 'rc, 'xc) query ) ->
+    ('r, 'f, 'rc, 'c) conv_uri
+
+let ( ** ) (n,x) y = Cons (n,x, y)
+let ( **! ) (n,x) y = Conv (n,x,y)
+let nil = Nil
 
 let host x = Host x
+let rel = Rel
 let (/) a b = Suffix(a,b)
-let (/!) a b = SuffixAtom(a,b)
-let (//!) a b = SuffixConv(a,b)
-let (~/) x = Rel/x
+let (/%) a b = SuffixAtom(a,b)
+let (/!) a b = SuffixConv(a,b)
+let (/?) p q = Conv_uri (p,q)
 
+(** {2 Proper uris} *)
+
+(** {3 Utilities Pseudo-lists} *)
 
 type (_,_) convlist =
   | Nil : ('a,'a) convlist
@@ -75,16 +82,9 @@ let rec rec_append
     | Vonc (a,l) -> rec_append l (Conv(a,l2))
 
 
-type ('r, 'f, 'rc, 'c) conv_uri =
-  | Conv_uri :
-      ( ('x, 'f, 'xc, 'c) path * ('r, 'x, 'rc, 'xc) query ) ->
-    ('r, 'f, 'rc, 'c) conv_uri
-
-let (/?) p q = Conv_uri (p,q)
 
 type ('r, 'f) uri =
     Uri : (('r,'f,('r,'f) uri,'c) conv_uri * (('r,'f) uri, 'c) convlist) -> ('r,'f) uri
-
 
 
 (** {2 Finalization} *)
