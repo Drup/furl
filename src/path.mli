@@ -74,4 +74,5 @@ type ('r, 'f) uri
 
 val finalize : ('r, 'f, ('r, 'f) uri, 'c) conv_uri -> 'c
 
+val keval : ('a, 'b) uri -> (Uri.t -> 'a) -> 'b
 val eval : (Uri.t, 'a) uri -> 'a

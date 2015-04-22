@@ -174,12 +174,15 @@ let rec eval_query
       fun x -> eval_query q l @@ fun l r ->
           k l ((n, eval_atom a (c.of_ x)) :: r)
 
-let eval_conv (Conv_uri (p,q)) l =
+let eval_conv (Conv_uri (p,q)) l k =
   eval_path p l @@ fun l host path ->
   eval_query q l @@ fun Nil query ->
+  k @@
   Uri.make
     ?host
     ~path:(String.concat "/" @@ List.rev path)
     ~query ()
 
-let eval (Uri (c,l)) = eval_conv c l
+let keval (Uri (c,l)) k = eval_conv c l k
+
+let eval uri = keval uri (fun x -> x)
