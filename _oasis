@@ -27,3 +27,13 @@ Document api
   XOCamlbuildExtraArgs:
     "-docflags '-colorize-code -short-functors -charset utf-8'"
   XOCamlbuildLibraries: path
+
+Executable test
+  Path: test
+  BuildDepends: path
+  MainIs: test.ml
+
+Test test
+  Command: $test
+  TestTools: test
+  WorkingDirectory: _build

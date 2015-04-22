@@ -183,15 +183,3 @@ let eval_conv (Conv_uri (p,q)) l =
     ~query ()
 
 let eval (Uri (c,l)) = eval_conv c l
-
-
-
-
-(* www.bla.com/foo/%i/bla/%f?truc=%s *)
-let u = ~/"foo"/!Int/"bla"/!Float/?("truc", Star Int)**?("a", String)**Nil
-let u = finalize u Conv.id
-let s = eval u
-
-let uri = s 3 5. [1;2] "bla"
-
-let () = Format.printf "%a" Uri.pp_hum uri
