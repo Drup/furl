@@ -67,12 +67,12 @@ type (_,_) vonclist =
   | Nil : ('a, 'a) vonclist
   | Vonc : ('a, 'b) Conv.t * (('a, 'b) Conv.t -> 'r, 'l) vonclist -> ('r, 'l) vonclist
 
-let rec vonc_conv
+let rec rec_append
   : type c rc xc.
     (xc, c) vonclist -> (rc, xc) convlist -> (rc, c) convlist
   = fun l1 l2 -> match l1 with
     | Nil -> l2
-    | Vonc (a,l) -> vonc_conv l @@ Conv(a,l2)
+    | Vonc (a,l) -> rec_append l (Conv(a,l2))
 
 
 type ('r, 'f, 'rc, 'c) conv_uri =
@@ -115,7 +115,8 @@ let finalize
   = fun (Conv_uri (p,q) as u) ->
     finalize_path p @@ fun lp ->
     finalize_query q @@ fun lq ->
-    Uri (u, vonc_conv lp lq)
+    Uri (u, rec_append lp lq)
+
 
 (** {2 Evaluation functions} *)
 
