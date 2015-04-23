@@ -216,3 +216,56 @@ let eval_conv u l k =
 let keval (Uri (c,l)) k = eval_conv c l k
 
 let eval uri = keval uri (fun x -> x)
+
+(** {2 matching} *)
+
+let slash = Re.char '/'
+
+let interleave l =
+  let rec aux acc = function
+    | []   -> List.rev acc
+    | h::t -> aux (h::slash::acc) t
+  in aux [] l
+
+let rec regexp_atom_list
+  : type a . a atom -> Re.t list
+  = let open Re in function
+    (* -?[0-9]+( .[0-9]* )? / *)
+    | Float       ->
+      [opt (char '-') ; rep1 digit ; opt (seq [char '.'; rep digit])]
+    (* -?[0-9]+ / *)
+    | Int         -> [opt (char '-') ; rep1 digit]
+    | Int32       -> [opt (char '-') ; rep1 digit]
+    | Int64       -> [opt (char '-') ; rep1 digit]
+    | Nativeint   -> [opt (char '-') ; rep1 digit]
+    (* true|false / *)
+    | Bool        -> [alt [str "true" ; str "false"]]
+    (* [^/]+ / *)
+    | String      -> [rep1 @@ compl [slash]]
+    | Opt e       -> [alt [epsilon ; regexp_atom e]]
+    | Or (e1,e2)  ->
+      [alt [regexp_atom e1 ; regexp_atom e2]]
+    | List e      -> [rep @@ regexp_atom e]
+    | List1 e     -> [rep1 @@ regexp_atom e]
+    | Seq (e1,e2) -> regexp_atom_list e1 @ regexp_atom_list e2
+    | Prefix (s,e)-> str s :: regexp_atom_list e
+    | Suffix (e,s)-> regexp_atom_list e @ [str s]
+
+and regexp_atom
+  : type a . a atom -> Re.t
+  = fun l -> Re.seq @@ interleave @@ regexp_atom_list l
+
+let rec regexp_path
+  : type r f rc fc . (r,f,rc,fc) path -> Re.t list
+  = function
+    | Host _            -> []
+    | Rel               -> []
+    | SuffixConst (p,s) -> regexp_path p @ [slash; Re.str s]
+    | SuffixAtom  (p,a) -> regexp_path p @ (slash :: regexp_atom_list a)
+    | SuffixConv  (p,a) -> regexp_path p @ (slash :: regexp_atom_list a)
+
+let regexp_conv_uri
+  : type r f rc fc . (r,f,rc,fc) conv_uri -> Re.t list
+  = function
+    | Query (p,q) -> failwith "TODO"
+    | SlashQuery (p,q) -> failwith "TODO"
