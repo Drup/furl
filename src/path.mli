@@ -21,9 +21,11 @@ type _ atom =
   | String    : string atom
   | Opt       : 'a atom -> 'a option atom
   | Or        : 'a atom * 'b atom -> ('a,'b) sum atom
-  | Star      : 'a atom -> 'a list atom
-  | Plus      : 'a atom -> ('a * 'a list) atom
+  | List      : 'a atom -> 'a list atom
+  | List1     : 'a atom -> ('a * 'a list) atom
   | Seq       : 'a atom * 'b atom -> ('a * 'b) atom
+  | Prefix    : string * 'a atom -> 'a atom
+  | Suffix    : 'a atom * string -> 'a atom
 
 (** {2 Query} *)
 
@@ -64,6 +66,11 @@ val (/!) :
 type ('r, 'f, 'rc, 'c) conv_uri
 
 val (/?) :
+  (    'a, 'b,     'c, 'd) path ->
+  ('e, 'a,     'f, 'c    ) query ->
+  ('e,     'b, 'f,     'd) conv_uri
+
+val (//?) :
   (    'a, 'b,     'c, 'd) path ->
   ('e, 'a,     'f, 'c    ) query ->
   ('e,     'b, 'f,     'd) conv_uri
