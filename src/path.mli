@@ -61,25 +61,25 @@ val (/!) :
   ('a -> 'b, 'c, ('d, 'a) Conv.t -> 'e, 'f) path -> (_,'d) atom ->
   (      'b, 'c,                    'e, 'f) path
 
-(** {2 Convertible Uri} *)
+(** {2 Convertible Url} *)
 
-type ('r, 'f, 'rc, 'c) conv_uri
+type ('r, 'f, 'rc, 'c) conv_url
 
 val (/?) :
   (    'a, 'b,     'c, 'd) path ->
   ('e, 'a,     'f, 'c    ) query ->
-  ('e,     'b, 'f,     'd) conv_uri
+  ('e,     'b, 'f,     'd) conv_url
 
 val (//?) :
   (    'a, 'b,     'c, 'd) path ->
   ('e, 'a,     'f, 'c    ) query ->
-  ('e,     'b, 'f,     'd) conv_uri
+  ('e,     'b, 'f,     'd) conv_url
 
-(** {2 Base Uri} *)
+(** {2 Base Url} *)
 
-type ('r, 'f) uri
+type ('r, 'f) url
 
-val finalize : ('r, 'f, ('r, 'f) uri, 'c) conv_uri -> 'c
+val finalize : ('r, 'f, ('r, 'f) url, 'c) conv_url -> 'c
 
-val keval : ('a, 'b) uri -> (Uri.t -> 'a) -> 'b
-val eval : (Uri.t, 'a) uri -> 'a
+val keval : ('a, 'b) url -> (Uri.t -> 'a) -> 'b
+val eval : (Uri.t, 'a) url -> 'a

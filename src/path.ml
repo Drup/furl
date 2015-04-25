@@ -48,13 +48,13 @@ type ('return, 'fu, 'returnc, 'converter) path =
   | SuffixConv : (('b -> 'r, 'f, ('a, 'b) Conv.t -> 'rc, 'c) path * (_,'a) atom)
     -> ('r, 'f, 'rc, 'c) path
 
-type ('r, 'f, 'rc, 'c) conv_uri =
+type ('r, 'f, 'rc, 'c) conv_url =
   | Query :
       ( ('x, 'f, 'xc, 'c) path * ('r, 'x, 'rc, 'xc) query ) ->
-    ('r, 'f, 'rc, 'c) conv_uri
+    ('r, 'f, 'rc, 'c) conv_url
   | SlashQuery :
       ( ('x, 'f, 'xc, 'c) path * ('r, 'x, 'rc, 'xc) query ) ->
-    ('r, 'f, 'rc, 'c) conv_uri
+    ('r, 'f, 'rc, 'c) conv_url
 
 let ( ** ) (n,x) y = Cons (n,x, y)
 let ( **! ) (n,x) y = Conv (n,x,y)
@@ -68,7 +68,7 @@ let (/!) a b = SuffixConv(a,b)
 let (/?) p q = Query (p,q)
 let (//?) p q = SlashQuery (p,q)
 
-(** {2 Proper uris} *)
+(** {2 Proper urls} *)
 
 (** {3 Utilities Pseudo-lists} *)
 
@@ -80,17 +80,17 @@ type (_,_) vonclist =
   | Nil : ('a, 'a) vonclist
   | Vonc : ('a, 'b) Conv.t * (('a, 'b) Conv.t -> 'r, 'l) vonclist -> ('r, 'l) vonclist
 
-let rec rec_append
+let rec rev_append
   : type c rc xc.
     (xc, c) vonclist -> (rc, xc) convlist -> (rc, c) convlist
   = fun l1 l2 -> match l1 with
     | Nil -> l2
-    | Vonc (a,l) -> rec_append l (Conv(a,l2))
+    | Vonc (a,l) -> rev_append l (Conv(a,l2))
 
 
 
-type ('r, 'f) uri =
-    Uri : (('r,'f,('r,'f) uri,'c) conv_uri * (('r,'f) uri, 'c) convlist) -> ('r,'f) uri
+type ('r, 'f) url =
+    Url : (('r,'f,('r,'f) url,'c) conv_url * (('r,'f) url, 'c) convlist) -> ('r,'f) url
 
 
 (** {2 Finalization} *)
@@ -180,8 +180,8 @@ let rec eval_path
 let rec eval_query
   : type r f c xc.
     (r, f, xc, c) query ->
-    ((_,_) uri,c) convlist ->
-    (((_,_) uri, xc) convlist -> (string * string list) list -> r) ->
+    ((_,_) url,c) convlist ->
+    (((_,_) url, xc) convlist -> (string * string list) list -> r) ->
     f
   = fun q l k -> match q with
     | Nil -> k l []
@@ -209,9 +209,9 @@ let eval_conv u l k =
     | Query (p,q)      -> aux false p q
     | SlashQuery (p,q) -> aux true p q
 
-let keval (Uri (c,l)) k = eval_conv c l k
+let keval (Url (c,l)) k = eval_conv c l k
 
-let eval uri = keval uri (fun x -> x)
+let eval url = keval url (fun x -> x)
 
 (** {2 matching} *)
 
@@ -355,8 +355,8 @@ let rec re_query
       let rq, l = re_query q in
       Conv (s, ma, rq), (s,ra) :: l
 
-let regexp_conv_uri
-  : type r f rc fc . (r,f,rc,fc) conv_uri -> Re.t list
+let re_conv_url
+  : type r f rc fc . (r,f,rc,fc) conv_url -> Re.t list
   = function
     | Query (p,q) -> failwith "TODO"
     | SlashQuery (p,q) -> failwith "TODO"
