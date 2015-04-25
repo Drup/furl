@@ -15,27 +15,27 @@ end
 
 type ('a,'b) sum = L of 'a | R of 'b
 
-type _ atom =
-  | Float     : float atom
-  | Int       : int atom
-  | Int32     : int32 atom
-  | Int64     : int64 atom
-  | Nativeint : nativeint atom
-  | Bool      : bool atom
-  | String    : string atom
-  | Opt       : 'a atom -> 'a option atom
-  | Or        : 'a atom * 'b atom -> ('a,'b) sum atom
-  | List      : 'a atom -> 'a list atom
-  | List1     : 'a atom -> ('a * 'a list) atom
-  | Seq       : 'a atom * 'b atom -> ('a * 'b) atom
-  | Prefix    : string * 'a atom -> 'a atom
-  | Suffix    : 'a atom * string -> 'a atom
+type top = Top
+type nontop = NonTop
+
+type (_,_) atom =
+  | Float     : (nontop, float) atom
+  | Int       : (nontop, int) atom
+  | Bool      : (nontop, bool) atom
+  | String    : (nontop, string) atom
+  | Opt       : (nontop, 'a) atom -> (_, 'a option) atom
+  | Or        : (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
+  | List      : (nontop, 'a) atom -> (top, 'a list) atom
+  | List1     : (nontop, 'a) atom -> (top, 'a * 'a list) atom
+  | Seq       : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
+  | Prefix    : string * (nontop, 'a) atom -> (nontop, 'a) atom
+  | Suffix    : (nontop, 'a) atom * string -> (nontop, 'a) atom
 
 type ('ret, 'fu, 'retc, 'converter) query =
   | Nil  : ('r,'r,'rc, 'rc) query
-  | Cons : (string * 'a atom * ('r, 'f, 'rc, 'c) query)
+  | Cons : (string * (_,'a) atom * ('r, 'f, 'rc, 'c) query)
     -> ('r, 'a -> 'f, 'rc, 'c) query
-  | Conv : (string * 'a atom * ('r, 'f, 'rc, 'c) query)
+  | Conv : (string * (_,'a) atom * ('r, 'f, 'rc, 'c) query)
     -> ('r, 'b -> 'f, 'rc, ('a, 'b) Conv.t -> 'c) query
 
 type ('return, 'fu, 'returnc, 'converter) path =
@@ -43,9 +43,9 @@ type ('return, 'fu, 'returnc, 'converter) path =
   | Rel : ('r,'r,'rc, 'rc) path
   | SuffixConst : (('r, 'f, 'rc, 'c) path * string)
     -> ('r, 'f, 'rc, 'c) path
-  | SuffixAtom : (('a -> 'r, 'f, 'rc, 'c) path * 'a atom)
+  | SuffixAtom : (('a -> 'r, 'f, 'rc, 'c) path * (_,'a) atom)
     -> ('r, 'f, 'rc, 'c) path
-  | SuffixConv : (('b -> 'r, 'f, ('a, 'b) Conv.t -> 'rc, 'c) path * 'a atom)
+  | SuffixConv : (('b -> 'r, 'f, ('a, 'b) Conv.t -> 'rc, 'c) path * (_,'a) atom)
     -> ('r, 'f, 'rc, 'c) path
 
 type ('r, 'f, 'rc, 'c) conv_uri =
@@ -117,56 +117,52 @@ let rec finalize_query
       (fun c -> finalize_query q (fun l -> k (Conv (c,l))))
 
 let finalize
-  : type r f c. (r, f, (r,f) uri, c) conv_uri -> c
+  : type r f c. (r, f, (r,f) url, c) conv_url -> c
   = fun u ->
     let f p q =
       finalize_path p @@ fun lp ->
       finalize_query q @@ fun lq ->
-      Uri (u, rec_append lp lq)
+      Url (u, rev_append lp lq)
     in match u with
       | Query (p,q)      -> f p q
       | SlashQuery (p,q) -> f p q
 
-
 (** {2 Evaluation functions} *)
 
-let rec append_last s = function
-  | [] -> [s]
-  | [h] -> [h^s]
-  | h :: t -> h :: append_last s t
-
-let rec eval_atom : type a . a atom -> a -> string list
+let rec eval_atom : type t a . (t,a) atom -> a -> string
   = function
-  | Float  -> (fun x -> [string_of_float x])
-  | Int    -> (fun x -> [string_of_int x])
-  | Int32  -> (fun x -> [Int32.to_string x])
-  | Int64  -> (fun x -> [Int64.to_string x])
-  | Nativeint -> (fun x -> [Nativeint.to_string x])
-  | Bool   -> (fun x -> [string_of_bool x])
-  | String -> (fun s -> [s])
-  | Opt p -> (function None -> [] | Some x -> eval_atom p x)
+  | Float  -> string_of_float
+  | Int    -> string_of_int
+  | Bool   -> string_of_bool
+  | String -> (fun s -> s)
+  | Opt p -> (function None -> "" | Some x -> eval_atom p x)
+  | Seq (p1,p2) ->
+    (fun (x1,x2) -> eval_atom p1 x1 ^ eval_atom p2 x2)
+  | Prefix(s,p) ->
+    fun x -> s ^ eval_atom p x
+  | Suffix(p,s) ->
+    fun x -> eval_atom p x ^ s
   | Or (pL, pR) ->
     (function L x -> eval_atom pL x | R x -> eval_atom pR x)
   | List p ->
-    (fun l -> List.concat @@ List.map (eval_atom p) l)
+    (fun l -> String.concat "" @@ List.map (eval_atom p) l)
   | List1 p ->
-    (fun (x,l) -> List.concat @@ List.map (eval_atom p) @@ x::l)
-  | Seq (p1,p2) ->
-    (fun (x1,x2) -> eval_atom p1 x1 @ eval_atom p2 x2)
-  | Prefix(s,p) ->
-    fun x -> begin match eval_atom p x with
-        | [] -> [s]
-        | h :: t -> (s^h) :: t
-      end
-  | Suffix(p,s) ->
-    fun x -> append_last s @@ eval_atom p x
+    (fun (x,l) -> String.concat "" @@ List.map (eval_atom p) @@ x::l)
 
+let eval_top_atom : type t a . (t,a) atom -> a -> string list
+  = function
+  | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
+  | List p ->
+    (fun l -> List.map (eval_atom p) l)
+  | List1 p ->
+    (fun (x,l) -> List.map (eval_atom p) @@ x::l)
+  | e -> fun x -> [eval_atom e x]
 
 let rec eval_path
   : type r f c xc.
     (r, f, xc, c) path ->
-    ((_,_) uri,c) convlist ->
-    (((_,_) uri, xc) convlist -> string option -> string list -> r) ->
+    ((_,_) url,c) convlist ->
+    (((_,_) url, xc) convlist -> string option -> string list -> r) ->
     f
   = fun p l k -> match p with
     | Host s -> k l (Some s) []
@@ -175,11 +171,11 @@ let rec eval_path
       eval_path p l @@ fun l h r -> k l h (s :: r)
     | SuffixAtom (p, a) ->
       eval_path p l @@ fun l h r x ->
-      k l h (eval_atom a x @ r)
+      k l h (eval_top_atom a x @ r)
     | SuffixConv(p, a) as _p ->
       eval_path p l @@ fun l h r x ->
       let Conv(c, l) = l in
-      k l h (eval_atom a (c.of_ x) @ r)
+      k l h (eval_top_atom a (c.of_ x) @ r)
 
 let rec eval_query
   : type r f c xc.
@@ -191,11 +187,11 @@ let rec eval_query
     | Nil -> k l []
     | Cons (n,a,q) ->
       fun x -> eval_query q l @@ fun l r ->
-        k l ((n, eval_atom a x) :: r)
+        k l ((n, eval_top_atom a x) :: r)
     | Conv (n,a,q) ->
       let Conv(c, l) = l in
       fun x -> eval_query q l @@ fun l r ->
-          k l ((n, eval_atom a (c.of_ x)) :: r)
+          k l ((n, eval_top_atom a (c.of_ x)) :: r)
 
 let eval_conv u l k =
   let aux ending_slash p q =
@@ -220,49 +216,144 @@ let eval uri = keval uri (fun x -> x)
 (** {2 matching} *)
 
 let slash = Re.char '/'
+let comma = Re.char ','
 
-let interleave l =
-  let rec aux acc = function
-    | []   -> List.rev acc
-    | h::t -> aux (h::slash::acc) t
-  in aux [] l
+type (_,_) re_atom =
+  | Float     : (nontop, float) re_atom
+  | Int       : (nontop, int) re_atom
+  | Bool      : (nontop, bool) re_atom
+  | String    : (nontop, string) re_atom
+  | Opt       : Re.markid * (nontop, 'a) re_atom -> (_, 'a option) re_atom
+  | Or        : Re.markid * (nontop, 'a) re_atom * Re.markid * (nontop,'b) re_atom -> (nontop, ('a,'b) sum) re_atom
+  | Seq       : (nontop, 'a) re_atom * (nontop, 'b) re_atom -> (nontop, 'a * 'b) re_atom
+  | Prefix    : string * (nontop, 'a) re_atom -> (nontop, 'a) re_atom
+  | Suffix    : (nontop, 'a) re_atom * string -> (nontop, 'a) re_atom
 
-let rec regexp_atom_list
-  : type a . a atom -> Re.t list
+  | List      : (nontop, 'a) re_atom -> (top, 'a list) re_atom
+  | List1     : (nontop, 'a) re_atom -> (top, 'a * 'a list) re_atom
+
+let rec re_atom
+  : type t a. (t,a) atom -> (t,a) re_atom * Re.t
   = let open Re in function
-    (* -?[0-9]+( .[0-9]* )? / *)
+    (* -?[0-9]+( .[0-9]* )? *)
     | Float       ->
-      [opt (char '-') ; rep1 digit ; opt (seq [char '.'; rep digit])]
-    (* -?[0-9]+ / *)
-    | Int         -> [opt (char '-') ; rep1 digit]
-    | Int32       -> [opt (char '-') ; rep1 digit]
-    | Int64       -> [opt (char '-') ; rep1 digit]
-    | Nativeint   -> [opt (char '-') ; rep1 digit]
-    (* true|false / *)
-    | Bool        -> [alt [str "true" ; str "false"]]
-    (* [^/]+ / *)
-    | String      -> [rep1 @@ compl [slash]]
-    | Opt e       -> [alt [epsilon ; regexp_atom e]]
+      Float, group @@ seq [opt (char '-') ; rep1 digit ; opt (seq [char '.'; rep digit])]
+    (* -?[0-9]+ *)
+    | Int         -> Int, group @@ seq [opt (char '-') ; rep1 digit]
+    (* true|false *)
+    | Bool        -> Bool, group @@ alt [str "true" ; str "false"]
+    (* [^/]+ *)
+    | String      -> String, group @@ rep1 @@ compl [slash]
+    | Opt e       ->
+      let me, re = re_atom e in
+      let id, re = mark re in
+      Opt (id,me), alt [epsilon ; re]
     | Or (e1,e2)  ->
-      [alt [regexp_atom e1 ; regexp_atom e2]]
-    | List e      -> [rep @@ regexp_atom e]
-    | List1 e     -> [rep1 @@ regexp_atom e]
-    | Seq (e1,e2) -> regexp_atom_list e1 @ regexp_atom_list e2
-    | Prefix (s,e)-> str s :: regexp_atom_list e
-    | Suffix (e,s)-> regexp_atom_list e @ [str s]
+      let me1, re1 = re_atom e1 in
+      let id1, re1 = mark re1 in
+      let me2, re2 = re_atom e2 in
+      let id2, re2 = mark re2 in
+      Or (id1, me1, id2, me2), seq [alt [re1 ; re2]]
+    | Prefix (s,e)->
+      let me, re = re_atom e in
+      Prefix (s,me), seq [str s ; re]
+    | Suffix (e,s)->
+      let me, re = re_atom e in
+      Suffix (me,s), seq [re ; str s]
+    | Seq (e1,e2) ->
+      let me1, re1 = re_atom e1 in
+      let me2, re2 = re_atom e2 in
+      Seq (me1, me2), seq [re1; re2]
 
-and regexp_atom
-  : type a . a atom -> Re.t
-  = fun l -> Re.seq @@ interleave @@ regexp_atom_list l
+    (* top *)
+    | List e      ->
+      let me, re = re_atom e in
+      List me, group @@ rep @@ no_group re
+    | List1 e     ->
+      let me, re = re_atom e in
+      List1 me, group @@ rep1 @@ no_group re
 
-let rec regexp_path
-  : type r f rc fc . (r,f,rc,fc) path -> Re.t list
+let re_atom_path
+  : type t a . (t,a) atom -> (t,a) re_atom * Re.t
+  = let open Re in function
+    | List  e ->
+      let me, re = re_atom e in
+      List me, group @@ rep @@ seq [slash; no_group re]
+    | List1 e ->
+      let me, re = re_atom e in
+      List1 me, group @@ rep1 @@ seq [slash; no_group re]
+    | Opt e       ->
+      let me, re = re_atom e in
+      let id, re = mark re in
+      Opt (id,me), seq [alt [epsilon ; seq [slash ; re]]]
+    | e ->
+      let me, re = re_atom e in
+      me, seq [slash; re]
+
+let re_atom_query
+  : type t a . (t,a) atom -> (t,a) re_atom * Re.t
+  = let open Re in function
+    | List  e ->
+      let me, re = re_atom e in
+      let re = no_group re in
+      List me, group @@ alt [ epsilon ; seq [ re ; rep @@ seq [comma; re]] ]
+    | List1 e ->
+      let me, re = re_atom e in
+      let re = no_group re in
+      List1 me, group @@ seq [ re ; rep @@ seq [comma; re]]
+    | e ->
+      let me, re = re_atom e in
+      me, re
+
+
+type (_,_,_,_) re_path =
+  | Start : ('r,'r, 'rc, 'rc) re_path
+  | SuffixConst : ('r, 'f, 'rc, 'c) re_path
+    -> ('r, 'f, 'rc, 'c) re_path
+  | SuffixAtom : (('a -> 'r, 'f, 'rc, 'c) re_path * (_,'a) re_atom)
+    -> ('r, 'f, 'rc, 'c) re_path
+  | SuffixConv : (('b -> 'r, 'f, ('a, 'b) Conv.t -> 'rc, 'c) re_path * (_,'a) re_atom)
+    -> ('r, 'f, 'rc, 'c) re_path
+
+let rec re_path
+  : type r f rc fc .
+    Re.t list -> (r,f,rc,fc) path -> (r,f,rc,fc) re_path * string option * Re.t list
+  = let open Re in
+  fun acc -> function
+    | Host s            -> Start, Some s, acc
+    | Rel               -> Start, None  , acc
+    | SuffixConst (p,s) ->
+      let (p,h,re) = re_path (slash :: str s :: acc) p in
+      SuffixConst p, h, re
+    | SuffixAtom (p,a) ->
+      let ma, ra = re_atom_path a in
+      let (p,h,re) = re_path (ra :: acc) p in
+      SuffixAtom (p,ma), h, re
+    | SuffixConv (p,a) ->
+      let ma, ra = re_atom_path a in
+      let (p,h,re) = re_path (ra :: acc) p in
+      SuffixConv (p,ma), h, re
+
+type ('ret, 'fu, 'retc, 'converter) re_query =
+  | Nil  : ('r,'r,'rc, 'rc) re_query
+  | Cons : (string * (_,'a) re_atom * ('r, 'f, 'rc, 'c) re_query)
+    -> ('r, 'a -> 'f, 'rc, 'c) re_query
+  | Conv : (string * (_,'a) re_atom * ('r, 'f, 'rc, 'c) re_query)
+    -> ('r, 'b -> 'f, 'rc, ('a, 'b) Conv.t -> 'c) re_query
+
+let rec re_query
+  : type r f rc fc .
+    (r,f,rc,fc) query -> (r,f,rc,fc) re_query * (string * Re.t) list
   = function
-    | Host _            -> []
-    | Rel               -> []
-    | SuffixConst (p,s) -> regexp_path p @ [slash; Re.str s]
-    | SuffixAtom  (p,a) -> regexp_path p @ (slash :: regexp_atom_list a)
-    | SuffixConv  (p,a) -> regexp_path p @ (slash :: regexp_atom_list a)
+    | Nil -> Nil, []
+    | Cons (s,a,q) ->
+      let ma, ra = re_atom_path a in
+      let rq, l = re_query q in
+      Cons (s, ma, rq), (s,ra) :: l
+    | Conv (s,a,q) ->
+      let ma, ra = re_atom_path a in
+      let rq, l = re_query q in
+      Conv (s, ma, rq), (s,ra) :: l
 
 let regexp_conv_uri
   : type r f rc fc . (r,f,rc,fc) conv_uri -> Re.t list

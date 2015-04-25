@@ -11,33 +11,33 @@ end
 
 type ('a,'b) sum = L of 'a | R of 'b
 
-type _ atom =
-  | Float     : float atom
-  | Int       : int atom
-  | Int32     : int32 atom
-  | Int64     : int64 atom
-  | Nativeint : nativeint atom
-  | Bool      : bool atom
-  | String    : string atom
-  | Opt       : 'a atom -> 'a option atom
-  | Or        : 'a atom * 'b atom -> ('a,'b) sum atom
-  | List      : 'a atom -> 'a list atom
-  | List1     : 'a atom -> ('a * 'a list) atom
-  | Seq       : 'a atom * 'b atom -> ('a * 'b) atom
-  | Prefix    : string * 'a atom -> 'a atom
-  | Suffix    : 'a atom * string -> 'a atom
+type top = Top
+type nontop = NonTop
+
+type (_,_) atom =
+  | Float     : (nontop, float) atom
+  | Int       : (nontop, int) atom
+  | Bool      : (nontop, bool) atom
+  | String    : (nontop, string) atom
+  | Opt       : (nontop, 'a) atom -> (_, 'a option) atom
+  | Or        : (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
+  | List      : (nontop, 'a) atom -> (top, 'a list) atom
+  | List1     : (nontop, 'a) atom -> (top, 'a * 'a list) atom
+  | Seq       : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
+  | Prefix    : string * (nontop, 'a) atom -> (nontop, 'a) atom
+  | Suffix    : (nontop, 'a) atom * string -> (nontop, 'a) atom
 
 (** {2 Query} *)
 
 type ('ret, 'fu, 'retc, 'converter) query
 
 val ( ** ) :
-  string * 'a atom ->
+  string * (_,'a) atom ->
   ('b,       'c, 'd, 'e) query ->
   ('b, 'a -> 'c, 'd, 'e) query
 
 val ( **! ) :
-  string * 'a atom ->
+  string * (_,'a) atom ->
   ('b,       'c, 'd,                    'e) query ->
   ('b, 'f -> 'c, 'd, ('a, 'f) Conv.t -> 'e) query
 
@@ -54,11 +54,11 @@ val (/) :
   ('a, 'b, 'c, 'd) path
 
 val (/%) :
-  ('a -> 'b, 'c, 'd, 'e) path -> 'a atom ->
+  ('a -> 'b, 'c, 'd, 'e) path -> (_,'a) atom ->
   (      'b, 'c, 'd, 'e) path
 
 val (/!) :
-  ('a -> 'b, 'c, ('d, 'a) Conv.t -> 'e, 'f) path -> 'd atom ->
+  ('a -> 'b, 'c, ('d, 'a) Conv.t -> 'e, 'f) path -> (_,'d) atom ->
   (      'b, 'c,                    'e, 'f) path
 
 (** {2 Convertible Uri} *)

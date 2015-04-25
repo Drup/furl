@@ -10,8 +10,8 @@ let uri = s 3 5. [1;2] "bla"
 let () = Format.printf "%a\n%!" Uri.pp_hum uri
 
 
-let u = host"www.foo.org"/%(Or(List Int, String))/?nil
+let u = host"www.foo.org"/%(List (Or(Int, String)))/?nil
 let s = eval @@ finalize u
-let uri = s @@ R "bla"
+let uri = s @@ [R "bla"]
 
 let () = Format.printf "%a\n%!" Uri.pp_hum uri
