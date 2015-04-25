@@ -21,11 +21,11 @@ type (_,_) atom =
   | String    : (nontop, string) atom
   | Opt       : (nontop, 'a) atom -> (_, 'a option) atom
   | Or        : (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
-  | List      : (nontop, 'a) atom -> (top, 'a list) atom
-  | List1     : (nontop, 'a) atom -> (top, 'a * 'a list) atom
   | Seq       : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
   | Prefix    : string * (nontop, 'a) atom -> (nontop, 'a) atom
   | Suffix    : (nontop, 'a) atom * string -> (nontop, 'a) atom
+  | List      : (nontop, 'a) atom -> (top, 'a list) atom
+  | List1     : (nontop, 'a) atom -> (top, 'a * 'a list) atom
 
 (** {2 Query} *)
 
@@ -42,6 +42,8 @@ val ( **! ) :
   ('b, 'f -> 'c, 'd, ('a, 'f) Conv.t -> 'e) query
 
 val nil : ('a, 'a, 'b, 'b) query
+
+val any : ('a, 'a, 'b, 'b) query
 
 (** {2 Path} *)
 

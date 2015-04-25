@@ -14,7 +14,7 @@ AlphaFeatures: ocamlbuild_more_args
 
 Library path
   Path: src
-  BuildDepends: uri
+  BuildDepends: uri, gen
   Modules: Path
 
 AlphaFeatures: ocamlbuild_more_args
