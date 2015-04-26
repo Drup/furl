@@ -1,5 +1,27 @@
 open Furl_utils
 
+(**
+   {2 Meta-variables}
+
+   To better read this file, here is the method of variable naming:
+
+   For type variables:
+   - f is a function type
+   - r is a return type of the associated f
+   - c are for types related to converter, used with r or f
+   - x is the intermediate type for type-level concatenation of diff-list.
+
+   For variables:
+   - re, r are for regular expressions
+   - id is Re's markid
+   - a is for atom
+   - p is for path
+   - q is for query
+   - cl is for converter list
+   - w is for witness (see section matching)
+   - k is for kontinuation (with a k).
+*)
+
 module Converter = struct
 
   type ('a, 'b) t = {
@@ -12,6 +34,47 @@ module Converter = struct
     { of_ = id ; to_ = id }
 
 end
+
+(** {2 Pseudo-lists} *)
+
+(** We need both these lists since path are right-assoc but
+    query tuples are left-assoc.
+
+    In each case in ('f,'r) list
+    - 'f is the type of the whole function
+    - 'r is the return type.
+
+    'f is of the form [_ Converter.t ->  ... -> 'r]
+*)
+
+(** Prepend list of converters *)
+type (_,_) convlist =
+  | Nil : ('a,'a) convlist
+  | Conv : ('a, 'b) Converter.t
+      * (                        'l, 'r) convlist
+     -> (('a, 'b) Converter.t -> 'l, 'r) convlist
+
+(** Postpend list of converters *)
+type (_,_) vonclist =
+  | Nil : ('a, 'a) vonclist
+  | Vonc :  ('a, 'b) Converter.t
+      * ('l, ('a, 'b) Converter.t -> 'r) vonclist
+     -> ('l,                    'r) vonclist
+
+(** We can write the statically typed rev_append.
+    Notice how the type variables chain appropriately. *)
+let rec rev_append
+  : type c rc xc.
+    (c, xc) vonclist -> (xc, rc) convlist -> (c, rc) convlist
+  = fun l1 l2 -> match l1 with
+    | Nil -> l2
+    | Vonc (a,l) -> rev_append l (Conv(a,l2))
+
+
+(** Ideally, these types should be a in a module, however the typechecker
+    is more precise when they are here and avoid triggering incomplete pattern
+    match warnings in presence of GADT type constraints.
+*)
 
 type (_,_) atom =
   | Float  : (_, float) atom
@@ -29,42 +92,60 @@ type (_,_) atom =
   | List   : ([`Notop], 'a) atom -> ([`Top], 'a list) atom
   | List1  : ([`Notop], 'a) atom -> ([`Top], 'a * 'a list) atom
 
+type slash = Slash | NoSlash
+
+type ('fu, 'return, 'converter, 'returnc) path =
+  | Host : string -> ('r, 'r, 'rc, 'rc) path
+  | Rel  : ('r, 'r ,'rc, 'rc) path
+  | SuffixConst :
+      ('f, 'r, 'c, 'rc) path * string
+    -> ('f, 'r, 'c, 'rc) path
+  | SuffixAtom :
+      ('f,'a -> 'r, 'c, 'rc) path * ([`Top],'a) atom
+    -> ('f,      'r, 'c, 'rc) path
+  | SuffixConv :
+      ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path
+      * ([`Top],'a) atom
+    -> ('f,       'r, 'c,                         'rc) path
+
 type ('fu, 'return, 'converter, 'returnc) query =
   | Nil  : ('r,'r, 'rc,'rc) query
   | Any  : ('r,'r, 'rc,'rc) query
 
   | Cons : string * ([`Top],'a) atom
       * (      'f, 'r, 'c, 'rc) query
-     -> ('a -> 'f, 'r, 'c, 'rc) query
+    -> ('a -> 'f, 'r, 'c, 'rc) query
 
   | Conv : string * ([`Top],'a) atom
       * (      'f, 'r,                         'c, 'rc) query
-     -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query
+    -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query
 
-type ('fu, 'return, 'converter, 'returnc) path =
-  | Host : string -> ('r, 'r, 'rc, 'rc) path
-  | Rel  : ('r, 'r ,'rc, 'rc) path
-  | SuffixConst :
-       ('f, 'r, 'c, 'rc) path * string
-    -> ('f, 'r, 'c, 'rc) path
-  | SuffixAtom :
-       ('f,'a -> 'r, 'c, 'rc) path * ([`Top],'a) atom
-    -> ('f,      'r, 'c, 'rc) path
-  | SuffixConv :
-       ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path * ([`Top],'a) atom
-    -> ('f,       'r, 'c,                         'rc) path
-
-type slash = Slash | NoSlash
-
-type ('f,'r,'c,'rc) url =
+(** A url is a path and a query.
+    Types complete types is the concatenation of both.
+*)
+and ('f,'r,'c) url =
   | ConvUrl : slash
-      * ('f, 'x,     'c, 'xc     ) path
-      * (    'x, 'r,     'xc, 'rc) query
-     -> ('f,     'r, 'c,      'rc) url
+      * ('f, 'x,     'c, 'xc               ) path
+      * (    'x, 'r,     'xc, ('f, 'r) furl) query
+    -> ('f,     'r, 'c) url
+
+(** A finalized url is a convertible url and a list of converters.
+    It simply quantifies existentially over the converters.
+*)
+and ('f, 'r) furl =
+    Url :
+      ('f, 'r, 'c) url
+      * (      'c, ('f, 'r) furl) convlist
+    -> ('f, 'r ) furl
+
+(** Note the return type of the convlist and the query: [('f, 'r) furl],
+    This is needed to write finalize.
+*)
+
 
 let ( ** ) (n,x) y = Cons (n,x, y)
-let ( **! ) (n,x) y = Conv (n,x,y)
-let nil = Nil
+let ( **! ) (n,x) y  : _ query = Conv (n,x,y)
+let nil : _ query = Nil
 let any = Any
 
 let host x = Host x
@@ -76,7 +157,6 @@ let (/?) p q = ConvUrl (NoSlash,p,q)
 let (//?) p q = ConvUrl (Slash,p,q)
 
 
-
 (** {2 Finalization} *)
 
 (** Finalization is the act of gathering all the converters in a list
@@ -84,51 +164,15 @@ let (//?) p q = ConvUrl (Slash,p,q)
 
     We use a typed prepend list for this with two typed variables
     which correspond to 'c and 'rc from earlier.
-*)
 
-type (_,_) convlist =
-  | Nil : ('a,'a) convlist
-  | Conv : ('a, 'b) Converter.t
-     * (                        'l, 'r) convlist
-    -> (('a, 'b) Converter.t -> 'l, 'r) convlist
+    We want to construct the list of converters
+    corresponding to the [c] type variable.
 
-(** A finalized url is a convertible url and a list of converters.
-    It simply quantifies existentially over the converters.
+    We will construct two lists:
+    - A prepend list for the queries: {!convlist}
+    - A postpend list for the path: {!vonclist}
 
-    Note the return type of the convlist: [('f, 'r) furl].
-    We will see why very soon.
-*)
-type ('f, 'r) furl =
-    Url :
-        ('f, 'r, 'c, ('f, 'r) furl) url
-      * (        'c, ('f, 'r) furl) convlist
-     -> ('f, 'r ) furl
-
-(**
-   We want to construct the list of converters
-   corresponding to the [c] type variable.
-
-   We will construct two lists:
-   - A prepend list for the queries: {!convlist}
-   - A postpend list for the path: {!vonclist}
-*)
-type (_,_) vonclist =
-  | Nil : ('a, 'a) vonclist
-  | Vonc :  ('a, 'b) Converter.t
-     * ('l, ('a, 'b) Converter.t -> 'r) vonclist
-    -> ('l,                    'r) vonclist
-
-(** We can write the statically typed rev_append.
-    Notice how the type variables chain appropriately. *)
-let rec rev_append
-  : type c rc xc.
-    (c, xc) vonclist -> (xc, rc) convlist -> (c, rc) convlist
-  = fun l1 l2 -> match l1 with
-    | Nil -> l2
-    | Vonc (a,l) -> rev_append l (Conv(a,l2))
-
-
-(** Our goal is to build the function that takes a convertible url,
+    Our goal is to build the function that takes a convertible url,
     the list of convertible and returns a url.
 
     In practice: [('f, 'r, 'c, ('f, 'r) furl) url -> 'c].
@@ -138,7 +182,7 @@ let rec rev_append
     while building a function to fill it.
 *)
 let rec finalize
-  : type r f c. (f, r, c, (f, r) furl) url -> c
+  : type r f c. (f, r, c) url -> c
   = fun (ConvUrl (_, p, q) as url) ->
     finalize_path p @@ fun lp ->
     finalize_query q @@ fun lq ->
@@ -165,10 +209,15 @@ and finalize_query
     | Any -> k Nil
     | Cons (_,_,q) -> finalize_query q k
     | Conv (_,_,q) ->
-      (fun c -> finalize_query q (fun l -> k (Conv (c,l))))
+      (fun c -> finalize_query q (fun cl -> k (Conv (c,cl))))
 
 
 (** {2 Evaluation functions} *)
+
+(** Evaluation is the act of filling the holes.
+
+    The process is rather straightforward using, once again, continuations.
+*)
 
 let rec eval_atom : type t a . (t,a) atom -> a -> string
   = function
@@ -176,7 +225,7 @@ let rec eval_atom : type t a . (t,a) atom -> a -> string
   | Int    -> string_of_int
   | Bool   -> string_of_bool
   | String -> (fun s -> s)
-  (* TODO: We could potentially pre-compile the regexp. *)
+  (* TODO: We could pre-compile the regexp. *)
   | Regexp re ->
     fun s ->
       if not @@ Re.execp (Re.compile @@ Re.whole_string re) s
@@ -193,17 +242,17 @@ let rec eval_atom : type t a . (t,a) atom -> a -> string
   | Alt (pL, pR) ->
     (function `Left x -> eval_atom pL x | `Right x -> eval_atom pR x)
   | List p ->
-    (fun l -> String.concat "" @@ List.map (eval_atom p) l)
+    fun l -> String.concat "" @@ List.map (eval_atom p) l
   | List1 p ->
-    (fun (x,l) -> String.concat "" @@ List.map (eval_atom p) @@ x::l)
+    fun (x,l) -> String.concat "" @@ List.map (eval_atom p) @@ x::l
 
 let eval_top_atom : type a. ([`Top],a) atom -> a -> string list
   = function
   | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
   | List p ->
-    (fun l -> List.map (eval_atom p) l)
+    fun l -> List.map (eval_atom p) l
   | List1 p ->
-    (fun (x,l) -> List.map (eval_atom p) @@ x::l)
+    fun (x,l) -> List.map (eval_atom p) @@ x::l
   | e -> fun x -> [eval_atom e x]
 
 let rec eval_path
@@ -231,16 +280,16 @@ let rec eval_query
     (c, (_,_) furl) convlist ->
     ((xc, (_,_) furl) convlist -> (string * string list) list -> r) ->
     f
-  = fun q l k -> match q with
-    | Nil -> k l []
-    | Any -> k l []
+  = fun q cl k -> match q with
+    | Nil -> k cl []
+    | Any -> k cl []
     | Cons (n,a,q) ->
-      fun x -> eval_query q l @@ fun l r ->
-        k l ((n, eval_top_atom a x) :: r)
+      fun x -> eval_query q cl @@ fun cl r ->
+        k cl ((n, eval_top_atom a x) :: r)
     | Conv (n,a,q) ->
-      let Conv(c, l) = l in
-      fun x -> eval_query q l @@ fun l r ->
-          k l ((n, eval_top_atom a (c.of_ x)) :: r)
+      let Conv(c, cl) = cl in
+      fun x -> eval_query q cl @@ fun cl r ->
+        k cl ((n, eval_top_atom a (c.of_ x)) :: r)
 
 let keval (Url (ConvUrl(slash,p,q),cl)) k =
   eval_path p cl @@ fun cl host path ->
@@ -256,7 +305,44 @@ let keval (Url (ConvUrl(slash,p,q),cl)) k =
 
 let eval url = keval url (fun x -> x)
 
+
 (** {2 matching} *)
+
+(** Matching is the act of extracting the information contained in a url
+    using a formatted url.
+
+    This is not straightforward.
+
+    We proceed in two steps:
+    1. Construct a regular expression matching the desired url.
+    2. Extract the information from the substrings once the url is matched.
+*)
+
+(** {3 Regexp construction}
+
+    The functions associated with this step are named re_*
+    In order to record how we constructed the regexp and how to later
+    extract information, we build a witness containing all the tools we need.
+
+    For each types (atom, query, path, uri), these witnesses are named re_*.
+
+    {4 Principles of construction of the regexp}
+
+    Each alternative is marked with {!Re.mark}. We store the markid in order
+    to be able to guess the branch matched.
+    The path is simply a concatenation of the regular expressions, separated
+    by /, with the particular treatment of lists.
+
+    query elements can appear in any order, so we reorder the
+    key by alphabetical order (both in the incoming query and the extraction).
+    We register the permutation as a mapping from indexes to matching group.
+*)
+
+(** The sorting criteria for queries. It must be used both for
+    regexp construction and extraction.
+*)
+let sort_query l =
+  List.sort (fun (x,_) (y,_) -> compare (x: string) y) l
 
 type _ re_atom =
   | Float     : float re_atom
@@ -275,40 +361,7 @@ type _ re_atom =
   | List      : 'a re_atom * Re.re -> 'a list re_atom
   | List1     : 'a re_atom * Re.re -> ('a * 'a list) re_atom
 
-let rec re_atom
-  : type t a. component:_ -> (t,a) atom -> a re_atom * Re.t
-  = let open Re in fun ~component -> function
-    | Float       -> Float, group Furl_re.float
-    | Int         -> Int, group Furl_re.arbitrary_int
-    | Bool        -> Bool, group Furl_re.bool
-    | String      -> String, group @@ Furl_re.string component
-    | Regexp re   -> Regexp re, group @@ no_group re
-    | Opt e       ->
-      let me, (id, re) = map_snd mark @@ re_atom ~component e in
-      Opt (id,me), alt [epsilon ; re]
-    | Alt (e1,e2)  ->
-      let me1, (id1, re1) = map_snd mark @@ re_atom ~component e1 in
-      let me2, (id2, re2) = map_snd mark @@ re_atom ~component e2 in
-      Alt (id1, me1, id2, me2), alt [re1 ; re2]
-    | Prefix (s,e)->
-      let me, re = re_atom ~component e in
-      Nest me, seq [str s ; re]
-    | Suffix (e,s)->
-      let me, re = re_atom ~component e in
-      Nest me, seq [re ; str s]
-    | Seq (e1,e2) ->
-      let me1, re1 = re_atom ~component e1 in
-      let me2, re2 = re_atom ~component e2 in
-      Seq (me1, me2), seq [re1; re2]
-
-    (* top *)
-    | List e      ->
-      let me, re = re_atom ~component e in
-      List (me,Re.compile re), group @@ rep @@ no_group re
-    | List1 e     ->
-      let me, re = re_atom ~component e in
-      List1 (me,Re.compile re), group @@ rep1 @@ no_group re
-
+(** Count the matching groups the regexp encoding some atom will have. *)
 let rec count_group
   : type a. a re_atom -> int
   = function
@@ -326,49 +379,42 @@ let rec count_group
 
 let incrg e i = i + count_group e
 
-let rec extract_atom
-  : type a. a re_atom -> int -> Re.substrings -> int * a
-  = fun rea i s -> match rea with
-    | Float  -> incrg rea i, float_of_string (Re.get s i)
-    | Int    -> incrg rea i, int_of_string   (Re.get s i)
-    | Bool   -> incrg rea i, bool_of_string  (Re.get s i)
-    | String -> incrg rea i, Re.get s i
-    | Regexp _ -> incrg rea i, Re.get s i
-    | Opt (id,e) ->
-      if not @@ Re.marked s id then incrg rea i, None
-      else map_snd (fun x -> Some x) @@ extract_atom e i s
-    | Alt (i1,e1,id2,e2) ->
-      if Re.marked s i1 then
-        map_snd (fun x -> `Left x) @@ extract_atom e1 i s
-      else if Re.marked s id2 then
-        map_snd (fun x -> `Right x) @@ extract_atom e2 (incrg e1 i) s
-      else
-        (* Invariant: Alt produces [Re.alt [e1 ; e2]] *)
-        assert false
+
+let rec re_atom
+  : type t a. component:_ -> (t,a) atom -> a re_atom * Re.t
+  = let open Re in fun ~component -> function
+    | Float       -> Float, group Furl_re.float
+    | Int         -> Int, group Furl_re.arbitrary_int
+    | Bool        -> Bool, group Furl_re.bool
+    | String      -> String, group @@ Furl_re.string component
+    | Regexp re   -> Regexp re, group @@ no_group re
+    | Opt e       ->
+      let w, (id, re) = map_snd mark @@ re_atom ~component e in
+      Opt (id,w), alt [epsilon ; re]
+    | Alt (e1,e2)  ->
+      let w1, (id1, re1) = map_snd mark @@ re_atom ~component e1 in
+      let w2, (id2, re2) = map_snd mark @@ re_atom ~component e2 in
+      Alt (id1, w1, id2, w2), alt [re1 ; re2]
+    | Prefix (s,e)->
+      let w, re = re_atom ~component e in
+      Nest w, seq [str s ; re]
+    | Suffix (e,s)->
+      let w, re = re_atom ~component e in
+      Nest w, seq [re ; str s]
     | Seq (e1,e2) ->
-      let i, v1 = extract_atom e1 i s in
-      let i, v2 = extract_atom e2 i s in
-      i, (v1, v2)
-    | Nest e -> extract_atom e i s
-    | List (e,re) -> i+1, extract_list e re i s
-    | List1 (e,re) ->
-      match extract_list e re i s with
-        | h :: t -> incrg rea i, (h, t)
-        | _ ->
-          (* Invariant: List1 produces [Re.rep1 e] *)
-          assert false
+      let w1, re1 = re_atom ~component e1 in
+      let w2, re2 = re_atom ~component e2 in
+      Seq (w1, w2), seq [re1; re2]
 
-and extract_list
-  : type a. a re_atom -> Re.re -> int -> Re.substrings -> a list
-  = fun e re i s ->
-    let aux s = snd @@ extract_atom e 1 s in
-    let (pos, pos') = Re.get_ofs s i in
-    let len = pos' - pos in
-    (* The whole original string*)
-    let original = Re.get s 0 in
-    Printf.eprintf "%s %i %i\n%!" original pos len ;
-    Gen.to_list @@ Gen.map aux @@ Re.all_gen ~pos ~len re original
+    (* top *)
+    | List e      ->
+      let w, re = re_atom ~component e in
+      List (w,Re.compile re), group @@ rep @@ no_group re
+    | List1 e     ->
+      let w, re = re_atom ~component e in
+      List1 (w,Re.compile re), group @@ rep1 @@ no_group re
 
+(** Top level atoms are specialized for path and query, see documentation. *)
 
 let re_atom_path
   : type a . (_,a) atom -> a re_atom * Re.t
@@ -377,20 +423,39 @@ let re_atom_path
   let component = `Path in
   function
     | List  e ->
-      let me, re = re_atom ~component e in
-      List (me, Re.compile re),
+      let w, re = re_atom ~component e in
+      List (w, Re.compile re),
       group @@ Furl_re.list ~component 0 @@ no_group re
     | List1 e ->
-      let me, re = re_atom ~component e in
-      List1 (me, Re.compile re),
+      let w, re = re_atom ~component e in
+      List1 (w, Re.compile re),
       group @@ Furl_re.list ~component 1 @@ no_group re
     | Opt e ->
-      let me, re = re_atom ~component e in
+      let w, re = re_atom ~component e in
       let id, re = mark re in
-      Opt (id,me), seq [alt [epsilon ; seq [Furl_re.slash ; re]]]
+      Opt (id,w), seq [alt [epsilon ; seq [Furl_re.slash ; re]]]
     | e ->
-      let me, re = re_atom ~component e in
-      me, seq [Furl_re.slash; re]
+      let w, re = re_atom ~component e in
+      w, seq [Furl_re.slash; re]
+
+let re_atom_query
+  : type a . (_,a) atom -> a re_atom * Re.t
+  =
+  let open Re in
+  let component = `Query_value in
+  function
+    | List  e ->
+      let w, re = re_atom ~component e in
+      List (w, Re.compile re),
+      group @@ Furl_re.list ~component 0 @@ no_group re
+    | List1 e ->
+      let w, re = re_atom ~component e in
+      List1 (w, Re.compile re),
+      group @@ Furl_re.list ~component 1 @@ no_group re
+    | e ->
+      let w, re = re_atom ~component e in
+      w, re
+
 
 type (_,_,_,_) re_path =
   | Start : ('r,'r, 'rc, 'rc) re_path
@@ -415,32 +480,14 @@ let rec re_path
       let (p, nb_group, re) = re_path p in
       p, nb_group, str s :: Furl_re.slash :: re
     | SuffixAtom (p,a) ->
-      let ma, ra = re_atom_path a in
-      let (p, nb_group, re) = re_path p in
-      SuffixAtom (p, nb_group, ma), incrg ma nb_group, ra :: re
+      let wa, ra = re_atom_path a in
+      let (wp, nb_group, rp) = re_path p in
+      SuffixAtom (wp, nb_group, wa), incrg wa nb_group, ra :: rp
     | SuffixConv (p,a) ->
-      let ma, ra = re_atom_path a in
-      let (p, nb_group, re) = re_path p in
-      SuffixConv (p, nb_group, ma), incrg ma nb_group, ra :: re
+      let wa, ra = re_atom_path a in
+      let (wp, nb_group, rp) = re_path p in
+      SuffixConv (wp, nb_group, wa), incrg wa nb_group, ra :: rp
 
-
-let re_atom_query
-  : type a . (_,a) atom -> a re_atom * Re.t
-  =
-  let open Re in
-  let component = `Query_value in
-  function
-    | List  e ->
-      let me, re = re_atom ~component e in
-      List (me, Re.compile re),
-      group @@ Furl_re.list ~component 0 @@ no_group re
-    | List1 e ->
-      let me, re = re_atom ~component e in
-      List1 (me, Re.compile re),
-      group @@ Furl_re.list ~component 1 @@ no_group re
-    | e ->
-      let me, re = re_atom ~component e in
-      me, re
 
 type ('fu,'ret,'converter,'retc) re_query =
   | Nil  : ('r,'r,'rc, 'rc) re_query
@@ -454,54 +501,49 @@ type ('fu,'ret,'converter,'retc) re_query =
 let rec re_query
   : type r f rc fc .
     (f, r, fc, rc) query ->
-    (f, r, fc, rc) re_query * bool * (string * Re.t * int) list
+    (f, r, fc, rc) re_query * bool * (string * (Re.t * int)) list
   = function
     | Nil -> Nil, false, []
     | Any -> Any, true,  []
     | Cons (s,a,q) ->
-      let ma, ra = re_atom_query a in
-      let rq, b, l = re_query q in
-      Cons (ma, rq), b, (s, ra, count_group ma) :: l
+      let wa, ra = re_atom_query a in
+      let wq, b_any, rq = re_query q in
+      Cons (wa, wq), b_any, (s, (ra, count_group wa)) :: rq
     | Conv (s,a,q) ->
-      let ma, ra = re_atom_query a in
-      let rq, b, l = re_query q in
-      Conv (ma, rq), b, (s,ra, count_group ma) :: l
+      let wa, ra = re_atom_query a in
+      let wq, b_any, rq = re_query q in
+      Conv (wa, wq), b_any, (s,(ra, count_group wa)) :: rq
 
 
-type ('f,'r,'c,'rc) re_url =
+type ('f,'r,'c) re_url =
   | ReUrl :
-      ( ('f, 'x,    'c, 'xc     ) re_path *
-        (    'x, 'r,    'xc, 'rc) re_query *
-          int array
-      ) -> ('f,'r,'c,'rc) re_url
-
-
+       ('f, 'x,    'c, 'xc               ) re_path
+     * (    'x, 'r,    'xc, ('f, 'r) furl) re_query * int array
+    -> ('f,'r,'c) re_url
 
 let re_url
-  : type r f rc fc . (r,f,rc,fc) url -> (r,f,rc,fc) re_url * Re.t
+  : type f r c. (f,r,c) url -> (f,r,c) re_url * Re.t
   = function ConvUrl(slash,p,q) ->
     let end_path = match slash with
       | NoSlash -> Re.epsilon
       | Slash -> Re.char '/'
     in
-    let (rep, nb_group, repl) = re_path p in
+    let (wp, nb_group, rp) = re_path p in
     match q with
       | Nil ->
-        ReUrl (rep, Nil, [||]),
-        Re.seq @@ List.rev (end_path :: repl)
+        ReUrl (wp, Nil, [||]),
+        Re.seq @@ List.rev (end_path :: rp)
 
       | Any ->
         let end_re = Re.(opt @@ seq [Re.char '?' ; rep any]) in
-        ReUrl (rep, Nil, [||]),
-        Re.seq @@ List.rev_append repl [end_path; end_re]
+        ReUrl (wp, Nil, [||]),
+        Re.seq @@ List.rev_append rp [end_path; end_re]
 
       | _ ->
-        let (req, any_query, reql) = re_query q in
-        let rel =
-          List.sort (fun (s1,_,_) (s2,_,_) -> compare (s1 : string) s2) reql
-        in
+        let (wq, any_query, rql) = re_query q in
+        let rel = sort_query rql in
         let t =
-          build_permutation nb_group (fun (_,_,i) -> i) reql rel
+          build_permutation nb_group (fun (_,(_,i)) -> i) rql rel
         in
 
         let query_sep = Furl_re.query_sep any_query in
@@ -512,7 +554,7 @@ let re_url
 
         let re =
           rel
-          |> List.fold_left (fun l (s,re,_) ->
+          |> List.fold_left (fun l (s,(re,_)) ->
             Re.seq [Re.str (s ^ "=") ; re ] :: l
           ) []
           |> intersperse query_sep
@@ -520,41 +562,98 @@ let re_url
           |> List.rev
           |> add_around_query
         in
-        ReUrl(rep,req,t),
-        Re.seq @@ List.rev_append repl (end_path :: Re.char '?' :: re)
+        ReUrl(wp,wq,t),
+        Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
+
+let get_re
+  : type r f. (f, r) furl -> Re.t
+  = function Url (url, _) ->
+    snd @@ re_url url
 
 
+(** {3 Extraction.} *)
+
+(** Extracting atom is just a matter of following the witness.
+    We just need to take care of counting where we are in the matching groups.
+*)
+let rec extract_atom
+  : type a. a re_atom -> int -> Re.substrings -> int * a
+  = fun rea i s -> match rea with
+    | Float  -> incrg rea i, float_of_string (Re.get s i)
+    | Int    -> incrg rea i, int_of_string   (Re.get s i)
+    | Bool   -> incrg rea i, bool_of_string  (Re.get s i)
+    | String -> incrg rea i, Re.get s i
+    | Regexp _ -> incrg rea i, Re.get s i
+    | Opt (id,w) ->
+      if not @@ Re.marked s id then incrg rea i, None
+      else map_snd (fun x -> Some x) @@ extract_atom w i s
+    | Alt (i1,w1,id2,w2) ->
+      if Re.marked s i1 then
+        map_snd (fun x -> `Left x) @@ extract_atom w1 i s
+      else if Re.marked s id2 then
+        map_snd (fun x -> `Right x) @@ extract_atom w2 (incrg w1 i) s
+      else
+        (* Invariant: Alt produces [Re.alt [e1 ; e2]] *)
+        assert false
+    | Seq (e1,e2) ->
+      let i, v1 = extract_atom e1 i s in
+      let i, v2 = extract_atom e2 i s in
+      i, (v1, v2)
+    | Nest e -> extract_atom e i s
+    | List (e,re) -> i+1, extract_list e re i s
+    | List1 (e,re) ->
+      match extract_list e re i s with
+        | h :: t -> incrg rea i, (h, t)
+        | [] ->
+          (* Invariant: List1 produces [Re.rep1 e] *)
+          assert false
+
+(** We need to re-match the string for lists, in order to extract
+    all the elements.
+    Re doesn't offer the possibility to keep the results when
+    grouping under a star (one could argue it's theoretically not
+    possible as it would be equivalent to counting in an automaton).
+*)
+and extract_list
+  : type a. a re_atom -> Re.re -> int -> Re.substrings -> a list
+  = fun e re i s ->
+    let aux s = snd @@ extract_atom e 1 s in
+    let (pos, pos') = Re.get_ofs s i in
+    let len = pos' - pos in
+    (* The whole original string*)
+    let original = Re.get s 0 in
+    Gen.to_list @@ Gen.map aux @@ Re.all_gen ~pos ~len re original
 
 
+(** Since path is in reversed order, we proceed by continuation.
+*)
 let rec extract_path
   : type f x r c xc xc'.
     (f,x,c,xc) re_path ->
-    ((xc, (_, _) furl) convlist -> x -> r * (xc', (_, _) furl) convlist) ->
     Re.substrings ->
-    (c, (_, _) furl) convlist ->
-    f -> r * (xc', (_, _) furl) convlist
-  = fun rp k subs cl -> match rp with
-    | Start  -> k cl
+    ((xc, (_, _) furl) convlist -> x -> r * (xc', (_, _) furl) convlist) ->
+      (c, (_, _) furl) convlist -> f -> r * (xc', (_, _) furl) convlist
+  = fun wp subs k -> match wp with
+    | Start  -> k
     | SuffixAtom (rep, idx, rea) ->
       let _, v = extract_atom rea idx subs in
       let k cl f = k cl (f v) in
-      extract_path rep k subs cl
+      extract_path rep subs k
     | SuffixConv (rep, idx, rea) ->
       let _, v = extract_atom rea idx subs in
-      let k (cl : _ convlist) f =
-        let Conv (conv,cl) = cl in
+      let k (Conv (conv,cl) : _ convlist) f =
         k cl (f @@ conv.to_ v)
       in
-      extract_path rep k subs cl
+      extract_path rep subs k
 
-
+(** Query are in the right order, we can proceed in direct style. *)
 let rec extract_query
   : type x r xc rc.
     (x,r,xc,rc) re_query ->
     int -> Re.substrings -> int array ->
     (xc, (_, _) furl) convlist ->
     x -> r * (rc, (_, _) furl) convlist
-  = fun rq i subs permutation cl f -> match rq with
+  = fun wq i subs permutation cl f -> match wq with
     | Nil  -> f, cl
     | Any  -> f, cl
     | Cons (rea,req) ->
@@ -568,21 +667,15 @@ let rec extract_query
       let Conv (conv,cl) = cl in
       extract_query req (i+1) subs permutation cl (f @@ conv.to_ v)
 
-
 let extract_url
   : type r f fc.
-    (f, r, fc, (_, _) furl) re_url ->
-    (fc, (_, _) furl) convlist ->
+    (f, r, fc) re_url ->
+    (fc, (f, r) furl) convlist ->
     Re.substrings -> f -> r
-  = fun (ReUrl (rp, rq, permutation)) cl subs f ->
-    let k = extract_query rq 0 subs permutation in
-    let r, Nil = extract_path rp k subs cl f in
+  = fun (ReUrl (wp, wq, permutation)) cl subs f ->
+    let k = extract_query wq 0 subs permutation in
+    let r, Nil = extract_path wp subs k cl f in
     r
-
-let get_re
-  : type r f. (f, r) furl -> Re.t
-  = function Url (url, _) ->
-    snd @@ re_url url
 
 let extract
   : type r f. (f, r) furl -> f:f -> Uri.t -> r
@@ -592,7 +685,7 @@ let extract
     fun ~f uri ->
       let uri =
         Uri.with_query uri @@
-        List.sort (fun (x,_) (y,_) -> compare (x: string) y) @@
+        sort_query @@
         Uri.query uri
       in
       let s = Uri.path_and_query uri in

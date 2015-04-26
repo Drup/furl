@@ -23,7 +23,8 @@ end
     - [List Int] in a path correspond to 4/5/6
     - [List Int] in a query correspond to 4,5,6
 
-    To encode more complex datatypes, see the documentation for converters.
+    To encode more complex datatypes, see the documentation for converters
+    and the examples.
 *)
 type ('top,'a) atom =
   | Float  : (_, float) atom
@@ -79,23 +80,24 @@ val (/!) :
 
 (** {2 Convertible Url} *)
 
-type ('f, 'r, 'c, 'rc) url
+type ('f, 'r, 'c) url
+
+type ('f, 'r) furl
 
 val (/?) :
-  ('b,     'a, 'd, 'c    ) path ->
-  (    'a, 'e,     'c, 'f) query ->
-  ('b,     'e, 'd,     'f) url
+  ('f, 'x,     'c, 'xc               ) path ->
+  (    'x, 'r,     'xc, ('f, 'r) furl) query ->
+  ('f,     'r, 'c) url
 
 val (//?) :
-  ('b, 'a,     'd, 'c    ) path ->
-  (    'a, 'e,     'c, 'f) query ->
-  ('b,     'e, 'd,     'f) url
+  ('f, 'x,     'c, 'xc               ) path ->
+  (    'x, 'r,     'xc, ('f, 'r) furl) query ->
+  ('f,     'r, 'c) url
 
 (** {2 Base Url} *)
 
-type ('r, 'f) furl
 
-val finalize : ('f, 'r, 'c, ('f, 'r) furl) url -> 'c
+val finalize : ('f, 'r, 'c) url -> 'c
 
 val keval : ('a, 'b) furl -> (Uri.t -> 'b) -> 'a
 val eval : ('a, Uri.t) furl -> 'a
