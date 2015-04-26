@@ -105,3 +105,8 @@ val eval : ('a, Uri.t) furl -> 'a
 val extract : ('f, 'r) furl -> f:'f -> Uri.t -> 'r
 
 val get_re : ('f, 'r) furl -> Re.t
+
+type 'r ex
+val ex : ('f, 'r) furl -> 'f -> 'r ex
+
+val match_url : default:(Uri.t -> 'r) -> 'r ex list -> Uri.t -> 'r

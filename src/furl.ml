@@ -20,6 +20,8 @@ open Furl_utils
    - cl is for converter list
    - w is for witness (see section matching)
    - k is for kontinuation (with a k).
+
+   Merlin is heavily recommended to browse this code.
 *)
 
 module Converter = struct
@@ -677,17 +679,68 @@ let extract_url
     let r, Nil = extract_path wp subs k cl f in
     r
 
+let prepare_uri uri =
+  uri
+  |> Uri.query
+  |> sort_query
+  |> Uri.with_query uri
+  |> Uri.path_and_query
+
 let extract
   : type r f. (f, r) furl -> f:f -> Uri.t -> r
   = function Url (conv_url,cl) ->
     let re_url, re = re_url conv_url in
     let re = Re.(compile @@ whole_string re) in
     fun ~f uri ->
-      let uri =
-        Uri.with_query uri @@
-        sort_query @@
-        Uri.query uri
-      in
-      let s = Uri.path_and_query uri in
+      let s = prepare_uri uri in
       let subs = Re.exec re s in
       extract_url re_url cl subs f
+
+
+(** {4 Multiple match} *)
+
+type 'r ex =
+  Ex : ('f, 'r) furl * 'f -> 'r ex
+
+let ex url f = Ex (url, f)
+
+type 'r re_ex =
+    ReEx :
+      'f * Re.markid * ('f, 'r, 'c) re_url
+      * ('c,('f,'r) furl) convlist -> 'r re_ex
+
+
+(* It's important to keep the order here, since Re will choose
+   the first regexp if there is ambiguity.
+*)
+let rec build_info_list = function
+  | [] -> [], []
+  | Ex (Url (conv_url,cl), f) :: l ->
+    let rel, wl = build_info_list l in
+    let re_url, re = re_url conv_url in
+    let id, re = Re.mark re in
+    re::rel, ReEx (f, id, re_url, cl)::wl
+
+let rec find_and_trigger
+  : type r. Re.substrings -> r re_ex list -> r
+  = fun subs -> function
+    | [] ->
+      (* Invariant: At least one of the regexp of the alternative matches. *)
+      assert false
+    | ReEx (f, id, re_url, cl) :: l ->
+      if Re.marked subs id then extract_url re_url cl subs f
+      else find_and_trigger subs l
+
+let match_url
+  : type r.
+    default:(Uri.t -> r) -> r ex list -> Uri.t -> r
+  = fun ~default l ->
+    let rel, wl = build_info_list l in
+    let re = Re.(compile @@ whole_string @@ alt rel) in
+    fun uri ->
+      let s = prepare_uri uri in
+      try
+        let subs = Re.exec re s in
+        find_and_trigger subs wl
+      with
+          Not_found -> default uri
