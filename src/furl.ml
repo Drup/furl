@@ -13,39 +13,31 @@ module Converter = struct
 
 end
 
-
-type ('a,'b) sum = L of 'a | R of 'b
-
-type top = Top
-type nontop = NonTop
-
 type (_,_) atom =
   | Float  : (_, float) atom
   | Int    : (_, int) atom
   | Bool   : (_, bool) atom
   | String : (_, string) atom
   | Regexp : Re.t -> (_, string) atom
-  | Opt    : (nontop, 'a) atom -> (_, 'a option) atom
-  | Or     :
-      (nontop, 'a) atom * (nontop,'b) atom -> (_, ('a,'b) sum) atom
-  | Seq    : (nontop, 'a) atom * (nontop, 'b) atom -> (_, 'a * 'b) atom
-  | Prefix : string * (nontop, 'a) atom -> (_, 'a) atom
-  | Suffix : (nontop, 'a) atom * string -> (_, 'a) atom
-  | List   : (nontop, 'a) atom -> (top, 'a list) atom
-  | List1  : (nontop, 'a) atom -> (top, 'a * 'a list) atom
-
-
-
+  | Opt    : ([`Notop], 'a) atom -> (_, 'a option) atom
+  | Alt    :
+      ([`Notop], 'a) atom * ([`Notop],'b) atom
+    -> (_, [`Left of 'a | `Right of 'b]) atom
+  | Seq    : ([`Notop], 'a) atom * ([`Notop], 'b) atom -> (_, 'a * 'b) atom
+  | Prefix : string * ([`Notop], 'a) atom -> (_, 'a) atom
+  | Suffix : ([`Notop], 'a) atom * string -> (_, 'a) atom
+  | List   : ([`Notop], 'a) atom -> ([`Top], 'a list) atom
+  | List1  : ([`Notop], 'a) atom -> ([`Top], 'a * 'a list) atom
 
 type ('fu, 'return, 'converter, 'returnc) query =
   | Nil  : ('r,'r, 'rc,'rc) query
   | Any  : ('r,'r, 'rc,'rc) query
 
-  | Cons : string * (top,'a) atom
+  | Cons : string * ([`Top],'a) atom
       * (      'f, 'r, 'c, 'rc) query
      -> ('a -> 'f, 'r, 'c, 'rc) query
 
-  | Conv : string * (top,'a) atom
+  | Conv : string * ([`Top],'a) atom
       * (      'f, 'r,                         'c, 'rc) query
      -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query
 
@@ -56,10 +48,10 @@ type ('fu, 'return, 'converter, 'returnc) path =
        ('f, 'r, 'c, 'rc) path * string
     -> ('f, 'r, 'c, 'rc) path
   | SuffixAtom :
-       ('f,'a -> 'r, 'c, 'rc) path * (top,'a) atom
+       ('f,'a -> 'r, 'c, 'rc) path * ([`Top],'a) atom
     -> ('f,      'r, 'c, 'rc) path
   | SuffixConv :
-       ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path * (top,'a) atom
+       ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path * ([`Top],'a) atom
     -> ('f,       'r, 'c,                         'rc) path
 
 type slash = Slash | NoSlash
@@ -198,14 +190,14 @@ let rec eval_atom : type t a . (t,a) atom -> a -> string
     fun x -> s ^ eval_atom p x
   | Suffix(p,s) ->
     fun x -> eval_atom p x ^ s
-  | Or (pL, pR) ->
-    (function L x -> eval_atom pL x | R x -> eval_atom pR x)
+  | Alt (pL, pR) ->
+    (function `Left x -> eval_atom pL x | `Right x -> eval_atom pR x)
   | List p ->
     (fun l -> String.concat "" @@ List.map (eval_atom p) l)
   | List1 p ->
     (fun (x,l) -> String.concat "" @@ List.map (eval_atom p) @@ x::l)
 
-let eval_top_atom : type a. (top,a) atom -> a -> string list
+let eval_top_atom : type a. ([`Top],a) atom -> a -> string list
   = function
   | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
   | List p ->
@@ -273,9 +265,9 @@ type _ re_atom =
   | String    : string re_atom
   | Regexp    : Re.t -> string re_atom
   | Opt       : Re.markid * 'a re_atom -> 'a option re_atom
-  | Or        :
+  | Alt       :
       Re.markid * 'a re_atom * Re.markid * 'b re_atom
-    -> ('a,'b) sum re_atom
+    -> [`Left of 'a| `Right of 'b] re_atom
   | Seq       :
       'a re_atom * 'b re_atom -> ('a * 'b) re_atom
   | Nest      : 'a re_atom -> 'a re_atom
@@ -294,10 +286,10 @@ let rec re_atom
     | Opt e       ->
       let me, (id, re) = map_snd mark @@ re_atom ~component e in
       Opt (id,me), alt [epsilon ; re]
-    | Or (e1,e2)  ->
+    | Alt (e1,e2)  ->
       let me1, (id1, re1) = map_snd mark @@ re_atom ~component e1 in
       let me2, (id2, re2) = map_snd mark @@ re_atom ~component e2 in
-      Or (id1, me1, id2, me2), alt [re1 ; re2]
+      Alt (id1, me1, id2, me2), alt [re1 ; re2]
     | Prefix (s,e)->
       let me, re = re_atom ~component e in
       Nest me, seq [str s ; re]
@@ -326,7 +318,7 @@ let rec count_group
     | String  -> 1
     | Regexp _ -> 1
     | Opt (_,e) -> count_group e
-    | Or (_,e1,_,e2) -> count_group e1 + count_group e2
+    | Alt (_,e1,_,e2) -> count_group e1 + count_group e2
     | Seq (e1,e2) -> count_group e1 + count_group e2
     | Nest e -> count_group e
     | List _ -> 1
@@ -345,13 +337,13 @@ let rec extract_atom
     | Opt (id,e) ->
       if not @@ Re.marked s id then incrg rea i, None
       else map_snd (fun x -> Some x) @@ extract_atom e i s
-    | Or (i1,e1,id2,e2) ->
+    | Alt (i1,e1,id2,e2) ->
       if Re.marked s i1 then
-        map_snd (fun x -> L x) @@ extract_atom e1 i s
+        map_snd (fun x -> `Left x) @@ extract_atom e1 i s
       else if Re.marked s id2 then
-        map_snd (fun x -> R x) @@ extract_atom e2 (incrg e1 i) s
+        map_snd (fun x -> `Right x) @@ extract_atom e2 (incrg e1 i) s
       else
-        (* Invariant: Or produces [Re.alt [e1 ; e2]] *)
+        (* Invariant: Alt produces [Re.alt [e1 ; e2]] *)
         assert false
     | Seq (e1,e2) ->
       let i, v1 = extract_atom e1 i s in
