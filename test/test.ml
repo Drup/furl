@@ -2,7 +2,7 @@ open Furl
 
 (* www.bla.com/foo/%i/bla/%f?truc=%s *)
 let raw_u = rel/"foo"/%Int/"bla"/%Float/?("truc", List Int)**!("a", String)**nil
-let url = finalize raw_u Conv.id
+let url = finalize raw_u Converter.id
 
 let uri = eval url 3 5. [1;2] "bla"
 

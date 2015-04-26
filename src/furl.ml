@@ -1,6 +1,6 @@
 open Furl_utils
 
-module Conv = struct
+module Converter = struct
 
   type ('a, 'b) t = {
     of_ : 'b -> 'a;
@@ -43,8 +43,8 @@ type ('fu, 'return, 'converter, 'returnc) query =
      -> ('a -> 'f, 'r, 'c, 'rc) query
 
   | Conv : string * (_,'a) atom
-      * (      'f, 'r,                    'c, 'rc) query
-     -> ('b -> 'f, 'r, ('a, 'b) Conv.t -> 'c, 'rc) query
+      * (      'f, 'r,                         'c, 'rc) query
+     -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query
 
 type ('fu, 'return, 'converter, 'returnc) path =
   | Host : string -> ('r, 'r, 'rc, 'rc) path
@@ -56,8 +56,8 @@ type ('fu, 'return, 'converter, 'returnc) path =
        ('f,'a -> 'r, 'c, 'rc) path * (_,'a) atom
     -> ('f,      'r, 'c, 'rc) path
   | SuffixConv :
-       ('f, 'b -> 'r, 'c, ('a, 'b) Conv.t -> 'rc) path * (_,'a) atom
-    -> ('f,       'r, 'c,                    'rc) path
+       ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path * (_,'a) atom
+    -> ('f,       'r, 'c,                         'rc) path
 
 type slash = Slash | NoSlash
 
@@ -93,9 +93,9 @@ let (//?) p q = ConvUrl (Slash,p,q)
 
 type (_,_) convlist =
   | Nil : ('a,'a) convlist
-  | Conv : ('a, 'b) Conv.t
-     * (                   'l, 'r) convlist
-    -> (('a, 'b) Conv.t -> 'l, 'r) convlist
+  | Conv : ('a, 'b) Converter.t
+     * (                        'l, 'r) convlist
+    -> (('a, 'b) Converter.t -> 'l, 'r) convlist
 
 (** A url is a convertible url and a list of converters.
     It simply quantifies existentially over the converters.
@@ -119,8 +119,8 @@ type ('f, 'r) url =
 *)
 type (_,_) vonclist =
   | Nil : ('a, 'a) vonclist
-  | Vonc :  ('a, 'b) Conv.t
-     * ('l, ('a, 'b) Conv.t -> 'r) vonclist
+  | Vonc :  ('a, 'b) Converter.t
+     * ('l, ('a, 'b) Converter.t -> 'r) vonclist
     -> ('l,                    'r) vonclist
 
 (** We can write the statically typed rev_append.
@@ -273,7 +273,8 @@ type (_,_) re_atom =
   | Or        :
       Re.markid * (nontop, 'a) re_atom * Re.markid * (nontop,'b) re_atom
     -> (_, ('a,'b) sum) re_atom
-  | Seq       : (nontop, 'a) re_atom * (nontop, 'b) re_atom -> (_, 'a * 'b) re_atom
+  | Seq       :
+      (nontop, 'a) re_atom * (nontop, 'b) re_atom -> (_, 'a * 'b) re_atom
 
   | List      : (nontop, 'a) re_atom * Re.re -> (top, 'a list) re_atom
   | List1     : (nontop, 'a) re_atom * Re.re -> (top, 'a * 'a list) re_atom
@@ -399,8 +400,9 @@ type (_,_,_,_) re_path =
        ('f, 'a -> 'r, 'c, 'rc) re_path * int * (_,'a) re_atom
     -> ('f,       'r, 'c, 'rc) re_path
   | SuffixConv :
-       ('f, 'b -> 'r, 'c, ('a, 'b) Conv.t -> 'rc) re_path * int *  (_,'a) re_atom
-    -> ('f,       'r, 'c,                    'rc) re_path
+       ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) re_path
+      * int *  (_,'a) re_atom
+    -> ('f,       'r, 'c,                         'rc) re_path
 
 let rec re_path
   : type r f rc fc .
@@ -449,7 +451,7 @@ type ('fu,'ret,'converter,'retc) re_query =
       (_,'a) re_atom * ('f,'r,'c,'rc) re_query
     -> ('a -> 'f,'r,'c,'rc) re_query
   | Conv : (_,'a) re_atom * ('f,'r,'c,'rc) re_query
-    -> ('b -> 'f, 'r, ('a, 'b) Conv.t -> 'c, 'rc) re_query
+    -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) re_query
 
 let rec re_query
   : type r f rc fc .

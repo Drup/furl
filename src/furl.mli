@@ -1,5 +1,7 @@
+(** Formatted Urls. *)
 
-module Conv : sig
+(** Bidirectional converters from one type to another. *)
+module Converter : sig
   type ('a, 'b) t = {
     of_ : 'b -> 'a;
     to_ : 'a -> 'b
@@ -40,8 +42,8 @@ val ( ** ) :
 
 val ( **! ) :
   string * (_,'a) atom ->
-  (      'c, 'd,                    'e, 'f) query ->
-  ('b -> 'c, 'd, ('a, 'b) Conv.t -> 'e, 'f) query
+  (      'c, 'd,                         'e, 'f) query ->
+  ('b -> 'c, 'd, ('a, 'b) Converter.t -> 'e, 'f) query
 
 val nil : ('a, 'a, 'b, 'b) query
 
@@ -62,8 +64,8 @@ val (/%) :
   ('c,       'b, 'e, 'd) path
 
 val (/!) :
-  ('a, 'b -> 'c, 'd, ('e, 'b) Conv.t -> 'f) path -> ('g, 'e) atom ->
-  ('a,       'c, 'd,                    'f) path
+  ('a, 'b -> 'c, 'd, ('e, 'b) Converter.t -> 'f) path -> ('g, 'e) atom ->
+  ('a,       'c, 'd,                         'f) path
 
 (** {2 Convertible Url} *)
 
