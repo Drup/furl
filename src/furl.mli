@@ -19,6 +19,7 @@ type (_,_) atom =
   | Int       : (nontop, int) atom
   | Bool      : (nontop, bool) atom
   | String    : (nontop, string) atom
+  | Regexp    : Re.t -> (nontop, string) atom
   | Opt       : (nontop, 'a) atom -> (_, 'a option) atom
   | Or        : (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
   | Seq       : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom

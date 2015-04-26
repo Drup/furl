@@ -50,6 +50,7 @@ type (_,_) atom =
   | Int       : (nontop, int) atom
   | Bool      : (nontop, bool) atom
   | String    : (nontop, string) atom
+  | Regexp    : Re.t -> (nontop, string) atom
   | Opt       : (nontop, 'a) atom -> (_, 'a option) atom
   | Or        : (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
   | Seq       : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
@@ -172,6 +173,7 @@ let rec eval_atom : type t a . (t,a) atom -> a -> string
   | Int    -> string_of_int
   | Bool   -> string_of_bool
   | String -> (fun s -> s)
+  | Regexp _ -> (fun s -> s)
   | Opt p -> (function None -> "" | Some x -> eval_atom p x)
   | Seq (p1,p2) ->
     (fun (x1,x2) -> eval_atom p1 x1 ^ eval_atom p2 x2)
@@ -258,6 +260,7 @@ type (_,_) re_atom =
   | Int       : (nontop, int) re_atom
   | Bool      : (nontop, bool) re_atom
   | String    : (nontop, string) re_atom
+  | Regexp    : Re.t -> (nontop, string) re_atom
   | Opt       : Re.markid * (nontop, 'a) re_atom -> (_, 'a option) re_atom
   | Or        :
       Re.markid * (nontop, 'a) re_atom * Re.markid * (nontop,'b) re_atom
@@ -274,6 +277,7 @@ let rec re_atom
     | Int         -> Int, group Furl_re.arbitrary_int
     | Bool        -> Bool, group Furl_re.bool
     | String      -> String, group @@ Furl_re.string component
+    | Regexp re   -> Regexp re, group @@ no_group re
     | Opt e       ->
       let me, (id, re) = map_snd mark @@ re_atom ~component e in
       Opt (id,me), alt [epsilon ; re]
@@ -307,6 +311,7 @@ let rec count_group
     | Int  -> 1
     | Bool  -> 1
     | String  -> 1
+    | Regexp _ -> 1
     | Opt (_,e) -> count_group e
     | Or (_,e1,_,e2) -> count_group e1 + count_group e2
     | Seq (e1,e2) -> count_group e1 + count_group e2
@@ -322,6 +327,7 @@ let rec extract_atom
     | Int    -> incrg rea i, int_of_string   (Re.get s i)
     | Bool   -> incrg rea i, bool_of_string  (Re.get s i)
     | String -> incrg rea i, Re.get s i
+    | Regexp _ -> incrg rea i, Re.get s i
     | Opt (id,e) ->
       if not @@ Re.marked s id then incrg rea i, None
       else map_snd (fun x -> Some x) @@ extract_atom e i s
