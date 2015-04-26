@@ -1,30 +1,4 @@
-
-(* Misc utilities *)
-
-let map_snd f (x,y) = (x, f y)
-
-let rec intersperse sep =
-  function
-    | [] -> []
-    | [x] -> [x]
-    | h :: t -> h :: sep :: intersperse sep t
-
-let find_idx count el l =
-  let rec aux el i = function
-    | [] -> raise Not_found
-    | x::l' ->
-      if x == el then i
-      else aux el (i + count el) l'
-  in aux el 0 l
-
-let build_permutation offset count l_before l_after =
-  let t = Array.make (List.length l_before) 0 in
-  l_before |> List.iteri (fun i x ->
-    let j = find_idx count x l_after in
-    t.(i) <- offset + j
-  ) ;
-  t
-
+open Furl_utils
 
 module Conv = struct
 
