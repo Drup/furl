@@ -46,15 +46,15 @@ type top = Top
 type nontop = NonTop
 
 type (_,_) atom =
-  | Float  : (nontop, float) atom
-  | Int    : (nontop, int) atom
-  | Bool   : (nontop, bool) atom
-  | String : (nontop, string) atom
-  | Regexp : Re.t -> (nontop, string) atom
+  | Float  : (_, float) atom
+  | Int    : (_, int) atom
+  | Bool   : (_, bool) atom
+  | String : (_, string) atom
+  | Regexp : Re.t -> (_, string) atom
   | Opt    : (nontop, 'a) atom -> (_, 'a option) atom
   | Or     :
-      (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
-  | Seq    : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
+      (nontop, 'a) atom * (nontop,'b) atom -> (_, ('a,'b) sum) atom
+  | Seq    : (nontop, 'a) atom * (nontop, 'b) atom -> (_, 'a * 'b) atom
   | Prefix : string * (nontop, 'a) atom -> (nontop, 'a) atom
   | Suffix : (nontop, 'a) atom * string -> (nontop, 'a) atom
   | List   : (nontop, 'a) atom -> (top, 'a list) atom
@@ -85,13 +85,11 @@ type ('fu, 'return, 'converter, 'returnc) path =
        ('f, 'b -> 'r, 'c, ('a, 'b) Conv.t -> 'rc) path * (_,'a) atom
     -> ('f,       'r, 'c,                    'rc) path
 
+type slash = Slash | NoSlash
+
 type ('f,'r,'c,'rc) conv_url =
-  | Query :
-        ('f, 'x,     'c, 'xc     ) path
-      * (    'x, 'r,     'xc, 'rc) query
-     -> ('f,     'r, 'c,      'rc) conv_url
-  | SlashQuery :
-        ('f, 'x,     'c, 'xc     ) path
+  | ConvUrl : slash
+      * ('f, 'x,     'c, 'xc     ) path
       * (    'x, 'r,     'xc, 'rc) query
      -> ('f,     'r, 'c,      'rc) conv_url
 
@@ -105,8 +103,8 @@ let rel = Rel
 let (/) a b = SuffixConst(a,b)
 let (/%) a b = SuffixAtom(a,b)
 let (/!) a b = SuffixConv(a,b)
-let (/?) p q = Query (p,q)
-let (//?) p q = SlashQuery (p,q)
+let (/?) p q = ConvUrl (NoSlash,p,q)
+let (//?) p q = ConvUrl (Slash,p,q)
 
 
 
@@ -125,18 +123,17 @@ type (_,_) convlist =
      * (                   'l, 'r) convlist
     -> (('a, 'b) Conv.t -> 'l, 'r) convlist
 
-(** Bundling a list of converters and a convertible url is just a matter
-    of existential quantification over the converters.
+(** A url is a convertible url and a list of converters.
+    It simply quantifies existentially over the converters.
 
     Note the return type of the convlist: [('f, 'r) url].
     We will see why very soon.
 *)
-
 type ('f, 'r) url =
     Url :
-       ('f, 'r, 'c, ('f, 'r) url) conv_url *
-       ('c, ('f, 'r) url) convlist
-    -> ('f, 'r) url
+        ('f, 'r, 'c, ('f, 'r) url) conv_url
+      * (        'c, ('f, 'r) url) convlist
+     -> ('f, 'r ) url
 
 (**
    We want to construct the list of converters
@@ -173,14 +170,10 @@ let rec rev_append
 *)
 let rec finalize
   : type r f c. (f, r, c, (f, r) url) conv_url -> c
-  = fun u ->
-    let f p q =
-      finalize_path p @@ fun lp ->
-      finalize_query q @@ fun lq ->
-      Url (u, rev_append lp lq)
-    in match u with
-      | Query (p,q)      -> f p q
-      | SlashQuery (p,q) -> f p q
+  = fun (ConvUrl (_, p, q) as conv_url) ->
+    finalize_path p @@ fun lp ->
+    finalize_query q @@ fun lq ->
+    Url (conv_url, rev_append lp lq)
 
 (** Once we have all these elements, it's simply type golf. *)
 
@@ -280,39 +273,33 @@ let rec eval_query
       fun x -> eval_query q l @@ fun l r ->
           k l ((n, eval_top_atom a (c.of_ x)) :: r)
 
-let eval_conv u l k =
-  let aux ending_slash p q =
-    eval_path p l @@ fun l host path ->
-    eval_query q l @@ fun Nil query ->
-    k @@
-    let path =
-      if ending_slash then "" :: path
-      else path
-    in Uri.make
-      ?host
-      ~path:(String.concat "/" @@ List.rev path)
-      ~query ()
-  in match u with
-    | Query (p,q)      -> aux false p q
-    | SlashQuery (p,q) -> aux true p q
-
-let keval (Url (c,l)) k = eval_conv c l k
+let keval (Url (ConvUrl(slash,p,q),cl)) k =
+  eval_path p cl @@ fun cl host path ->
+  eval_query q cl @@ fun Nil query ->
+  k @@
+  let path = match slash with
+    | NoSlash -> "" :: path
+    | Slash -> path
+  in Uri.make
+    ?host
+    ~path:(String.concat "/" @@ List.rev path)
+    ~query ()
 
 let eval url = keval url (fun x -> x)
 
 (** {2 matching} *)
 
 type (_,_) re_atom =
-  | Float     : (nontop, float) re_atom
-  | Int       : (nontop, int) re_atom
-  | Bool      : (nontop, bool) re_atom
-  | String    : (nontop, string) re_atom
-  | Regexp    : Re.t -> (nontop, string) re_atom
+  | Float     : (_, float) re_atom
+  | Int       : (_, int) re_atom
+  | Bool      : (_, bool) re_atom
+  | String    : (_, string) re_atom
+  | Regexp    : Re.t -> (_, string) re_atom
   | Opt       : Re.markid * (nontop, 'a) re_atom -> (_, 'a option) re_atom
   | Or        :
       Re.markid * (nontop, 'a) re_atom * Re.markid * (nontop,'b) re_atom
-    -> (nontop, ('a,'b) sum) re_atom
-  | Seq       : (nontop, 'a) re_atom * (nontop, 'b) re_atom -> (nontop, 'a * 'b) re_atom
+    -> (_, ('a,'b) sum) re_atom
+  | Seq       : (nontop, 'a) re_atom * (nontop, 'b) re_atom -> (_, 'a * 'b) re_atom
 
   | List      : (nontop, 'a) re_atom * Re.re -> (top, 'a list) re_atom
   | List1     : (nontop, 'a) re_atom * Re.re -> (top, 'a * 'a list) re_atom
@@ -508,7 +495,7 @@ let rec re_query
 
 
 type ('f,'r,'c,'rc) re_url =
-  | Join :
+  | ReUrl :
       ( ('f, 'x,    'c, 'xc     ) re_path *
         (    'x, 'r,    'xc, 'rc) re_query *
           int array
@@ -518,26 +505,23 @@ type ('f,'r,'c,'rc) re_url =
 
 let re_conv_url
   : type r f rc fc . (r,f,rc,fc) conv_url -> (r,f,rc,fc) re_url * Re.t
-  =
-
-  let aux
-    : type r f x rc c xc .
-      Re.t -> (f,x,c,xc) path ->  (x,r,xc,rc) query ->
-      (f,r,c,rc) re_url * Re.t
-    = fun end_path p q -> match q with
+  = function ConvUrl(slash,p,q) ->
+    let end_path = match slash with
+      | NoSlash -> Re.epsilon
+      | Slash -> Re.char '/'
+    in
+    let (rep, nb_group, repl) = re_path p in
+    match q with
       | Nil ->
-        let rep, _, rel = re_path p in
-        Join (rep, Nil, [||]),
-        Re.seq @@ List.rev (end_path :: rel)
+        ReUrl (rep, Nil, [||]),
+        Re.seq @@ List.rev (end_path :: repl)
 
       | Any ->
         let end_re = Re.(opt @@ seq [Re.char '?' ; rep any]) in
-        let rep, _, rel = re_path p in
-        Join (rep, Nil, [||]),
-        Re.seq @@ List.rev_append rel [end_path; end_re]
+        ReUrl (rep, Nil, [||]),
+        Re.seq @@ List.rev_append repl [end_path; end_re]
 
       | _ ->
-        let (rep, nb_group, repl) = re_path p in
         let (req, any_query, reql) = re_query q in
         let rel =
           List.sort (fun (s1,_,_) (s2,_,_) -> compare (s1 : string) s2) reql
@@ -562,12 +546,9 @@ let re_conv_url
           |> List.rev
           |> add_around_query
         in
-        Join(rep,req,t),
+        ReUrl(rep,req,t),
         Re.seq @@ List.rev_append repl (end_path :: Re.char '?' :: re)
-  in
-  function
-    | Query (p,q)      -> aux Re.epsilon p q
-    | SlashQuery (p,q) -> aux (Re.char '/') p q
+
 
 
 
@@ -577,7 +558,6 @@ let rec extract_path
     ((xc, (_, _) url) convlist -> x -> r * (xc', (_, _) url) convlist) ->
     Re.substrings ->
     (c, (_, _) url) convlist ->
-
     f -> r * (xc', (_, _) url) convlist
   = fun rp k subs cl -> match rp with
     | Start  -> k cl
@@ -615,25 +595,32 @@ let rec extract_query
       extract_query req (i+1) subs permutation cl (f @@ conv.to_ v)
 
 
+let extract_url
+  : type r f fc.
+    (f, r, fc, (_, _) url) re_url ->
+    (fc, (_, _) url) convlist ->
+    Re.substrings -> f -> r
+  = fun (ReUrl (rp, rq, permutation)) cl subs f ->
+    let k = extract_query rq 0 subs permutation in
+    let r, Nil = extract_path rp k subs cl f in
+    r
+
 let get_re
   : type r f. (f, r) url -> Re.t
-  = fun (Url (url, _)) ->
-    let _, re = re_conv_url url in
-    re
+  = function Url (conv_url, _) ->
+    snd @@ re_conv_url conv_url
 
 let extract
   : type r f. (f, r) url -> f:f -> Uri.t -> r
-  = fun (Url (url, cl)) ->
-    let Join (rp, rq, permutation), re = re_conv_url url in
+  = function Url (conv_url,cl) ->
+    let re_url, re = re_conv_url conv_url in
     let re = Re.(compile @@ whole_string re) in
-    fun ~f uri ->
-      let uri =
-        Uri.with_query uri @@
+    fun ~f url ->
+      let url =
+        Uri.with_query url @@
         List.sort (fun (x,_) (y,_) -> compare (x: string) y) @@
-        Uri.query uri
+        Uri.query url
       in
-      let s = Uri.path_and_query uri in
+      let s = Uri.path_and_query url in
       let subs = Re.exec re s in
-      let k = extract_query rq 0 subs permutation in
-      let r, Nil = extract_path rp k subs cl f in
-      r
+      extract_url re_url cl subs f

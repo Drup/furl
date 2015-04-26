@@ -15,18 +15,19 @@ type top = Top
 type nontop = NonTop
 
 type (_,_) atom =
-  | Float     : (nontop, float) atom
-  | Int       : (nontop, int) atom
-  | Bool      : (nontop, bool) atom
-  | String    : (nontop, string) atom
-  | Regexp    : Re.t -> (nontop, string) atom
-  | Opt       : (nontop, 'a) atom -> (_, 'a option) atom
-  | Or        : (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
-  | Seq       : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
-  | Prefix    : string * (nontop, 'a) atom -> (nontop, 'a) atom
-  | Suffix    : (nontop, 'a) atom * string -> (nontop, 'a) atom
-  | List      : (nontop, 'a) atom -> (top, 'a list) atom
-  | List1     : (nontop, 'a) atom -> (top, 'a * 'a list) atom
+  | Float  : (_, float) atom
+  | Int    : (_, int) atom
+  | Bool   : (_, bool) atom
+  | String : (_, string) atom
+  | Regexp : Re.t -> (_, string) atom
+  | Opt    : (nontop, 'a) atom -> (_, 'a option) atom
+  | Or     :
+      (nontop, 'a) atom * (nontop,'b) atom -> (_, ('a,'b) sum) atom
+  | Seq    : (nontop, 'a) atom * (nontop, 'b) atom -> (_, 'a * 'b) atom
+  | Prefix : string * (nontop, 'a) atom -> (nontop, 'a) atom
+  | Suffix : (nontop, 'a) atom * string -> (nontop, 'a) atom
+  | List   : (nontop, 'a) atom -> (top, 'a list) atom
+  | List1  : (nontop, 'a) atom -> (top, 'a * 'a list) atom
 
 (** {2 Query} *)
 
