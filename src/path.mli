@@ -29,17 +29,17 @@ type (_,_) atom =
 
 (** {2 Query} *)
 
-type ('ret, 'fu, 'retc, 'converter) query
+type ('fu, 'ret, 'converter, 'retc) query
 
 val ( ** ) :
   string * (_,'a) atom ->
-  ('b,       'c, 'd, 'e) query ->
-  ('b, 'a -> 'c, 'd, 'e) query
+  (      'c, 'b, 'e, 'd) query ->
+  ('a -> 'c, 'b, 'e, 'd) query
 
 val ( **! ) :
   string * (_,'a) atom ->
-  ('b,       'c, 'd,                    'e) query ->
-  ('b, 'f -> 'c, 'd, ('a, 'f) Conv.t -> 'e) query
+  (      'c, 'd,                    'e, 'f) query ->
+  ('b -> 'c, 'd, ('a, 'b) Conv.t -> 'e, 'f) query
 
 val nil : ('a, 'a, 'b, 'b) query
 
@@ -47,41 +47,45 @@ val any : ('a, 'a, 'b, 'b) query
 
 (** {2 Path} *)
 
-type ('return, 'fu, 'returnc, 'converter) path
+type ('fu, 'return, 'converter, 'returnc) path
 
 val host : string -> ('a, 'a, 'b, 'b) path
 val rel : ('a, 'a, 'b, 'b) path
 val (/) :
-  ('a, 'b, 'c, 'd) path -> string ->
-  ('a, 'b, 'c, 'd) path
+  ('b, 'a, 'd, 'c) path -> string ->
+  ('b, 'a, 'd, 'c) path
 
 val (/%) :
-  ('a -> 'b, 'c, 'd, 'e) path -> (_,'a) atom ->
-  (      'b, 'c, 'd, 'e) path
+  ('c, 'a -> 'b, 'e, 'd) path -> (_,'a) atom ->
+  ('c,       'b, 'e, 'd) path
 
 val (/!) :
-  ('a -> 'b, 'c, ('d, 'a) Conv.t -> 'e, 'f) path -> (_,'d) atom ->
-  (      'b, 'c,                    'e, 'f) path
+  ('a, 'b -> 'c, 'd, ('e, 'b) Conv.t -> 'f) path -> ('g, 'e) atom ->
+  ('a,       'c, 'd,                    'f) path
 
 (** {2 Convertible Url} *)
 
-type ('r, 'f, 'rc, 'c) conv_url
+type ('f, 'r, 'c, 'rc) conv_url
 
 val (/?) :
-  (    'a, 'b,     'c, 'd) path ->
-  ('e, 'a,     'f, 'c    ) query ->
-  ('e,     'b, 'f,     'd) conv_url
+  ('b,     'a, 'd, 'c    ) path ->
+  (    'a, 'e,     'c, 'f) query ->
+  ('b,     'e, 'd,     'f) conv_url
 
 val (//?) :
-  (    'a, 'b,     'c, 'd) path ->
-  ('e, 'a,     'f, 'c    ) query ->
-  ('e,     'b, 'f,     'd) conv_url
+  ('b, 'a,     'd, 'c    ) path ->
+  (    'a, 'e,     'c, 'f) query ->
+  ('b,     'e, 'd,     'f) conv_url
 
 (** {2 Base Url} *)
 
 type ('r, 'f) url
 
-val finalize : ('r, 'f, ('r, 'f) url, 'c) conv_url -> 'c
+val finalize : ('f, 'r, 'c, ('f, 'r) url) conv_url -> 'c
 
-val keval : ('a, 'b) url -> (Uri.t -> 'a) -> 'b
-val eval : (Uri.t, 'a) url -> 'a
+val keval : ('a, 'b) url -> (Uri.t -> 'b) -> 'a
+val eval : ('a, Uri.t) url -> 'a
+
+val extract : ('f, 'r) url -> f:'f -> Uri.t -> 'r
+
+val get_re : ('f, 'r) url -> Re.t
