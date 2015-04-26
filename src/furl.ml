@@ -214,7 +214,13 @@ let rec eval_atom : type t a . (t,a) atom -> a -> string
   | Int    -> string_of_int
   | Bool   -> string_of_bool
   | String -> (fun s -> s)
-  | Regexp _ -> (fun s -> s)
+  (* TODO: We could potentially pre-compile the regexp. *)
+  | Regexp re ->
+    fun s ->
+      if not @@ Re.execp (Re.compile @@ Re.whole_string re) s
+      then invalid_arg @@
+        Printf.sprintf "Furl.eval: regexp not respected by \"%s\"." s ;
+      s
   | Opt p -> (function None -> "" | Some x -> eval_atom p x)
   | Seq (p1,p2) ->
     (fun (x1,x2) -> eval_atom p1 x1 ^ eval_atom p2 x2)
