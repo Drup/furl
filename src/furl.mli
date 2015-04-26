@@ -26,8 +26,8 @@ type (_,_) atom =
   | Or     :
       (nontop, 'a) atom * (nontop,'b) atom -> (_, ('a,'b) sum) atom
   | Seq    : (nontop, 'a) atom * (nontop, 'b) atom -> (_, 'a * 'b) atom
-  | Prefix : string * (nontop, 'a) atom -> (nontop, 'a) atom
-  | Suffix : (nontop, 'a) atom * string -> (nontop, 'a) atom
+  | Prefix : string * (nontop, 'a) atom -> (_, 'a) atom
+  | Suffix : (nontop, 'a) atom * string -> (_, 'a) atom
   | List   : (nontop, 'a) atom -> (top, 'a list) atom
   | List1  : (nontop, 'a) atom -> (top, 'a * 'a list) atom
 
@@ -36,12 +36,12 @@ type (_,_) atom =
 type ('fu, 'ret, 'converter, 'retc) query
 
 val ( ** ) :
-  string * (_,'a) atom ->
+  string * (top,'a) atom ->
   (      'c, 'b, 'e, 'd) query ->
   ('a -> 'c, 'b, 'e, 'd) query
 
 val ( **! ) :
-  string * (_,'a) atom ->
+  string * (top,'a) atom ->
   (      'c, 'd,                         'e, 'f) query ->
   ('b -> 'c, 'd, ('a, 'b) Converter.t -> 'e, 'f) query
 
@@ -60,36 +60,36 @@ val (/) :
   ('b, 'a, 'd, 'c) path
 
 val (/%) :
-  ('c, 'a -> 'b, 'e, 'd) path -> (_,'a) atom ->
+  ('c, 'a -> 'b, 'e, 'd) path -> (top,'a) atom ->
   ('c,       'b, 'e, 'd) path
 
 val (/!) :
-  ('a, 'b -> 'c, 'd, ('e, 'b) Converter.t -> 'f) path -> ('g, 'e) atom ->
+  ('a, 'b -> 'c, 'd, ('e, 'b) Converter.t -> 'f) path -> (top, 'e) atom ->
   ('a,       'c, 'd,                         'f) path
 
 (** {2 Convertible Url} *)
 
-type ('f, 'r, 'c, 'rc) conv_url
+type ('f, 'r, 'c, 'rc) url
 
 val (/?) :
   ('b,     'a, 'd, 'c    ) path ->
   (    'a, 'e,     'c, 'f) query ->
-  ('b,     'e, 'd,     'f) conv_url
+  ('b,     'e, 'd,     'f) url
 
 val (//?) :
   ('b, 'a,     'd, 'c    ) path ->
   (    'a, 'e,     'c, 'f) query ->
-  ('b,     'e, 'd,     'f) conv_url
+  ('b,     'e, 'd,     'f) url
 
 (** {2 Base Url} *)
 
-type ('r, 'f) url
+type ('r, 'f) furl
 
-val finalize : ('f, 'r, 'c, ('f, 'r) url) conv_url -> 'c
+val finalize : ('f, 'r, 'c, ('f, 'r) furl) url -> 'c
 
-val keval : ('a, 'b) url -> (Uri.t -> 'b) -> 'a
-val eval : ('a, Uri.t) url -> 'a
+val keval : ('a, 'b) furl -> (Uri.t -> 'b) -> 'a
+val eval : ('a, Uri.t) furl -> 'a
 
-val extract : ('f, 'r) url -> f:'f -> Uri.t -> 'r
+val extract : ('f, 'r) furl -> f:'f -> Uri.t -> 'r
 
-val get_re : ('f, 'r) url -> Re.t
+val get_re : ('f, 'r) furl -> Re.t

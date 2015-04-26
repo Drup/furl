@@ -29,20 +29,23 @@ type (_,_) atom =
   | Or     :
       (nontop, 'a) atom * (nontop,'b) atom -> (_, ('a,'b) sum) atom
   | Seq    : (nontop, 'a) atom * (nontop, 'b) atom -> (_, 'a * 'b) atom
-  | Prefix : string * (nontop, 'a) atom -> (nontop, 'a) atom
-  | Suffix : (nontop, 'a) atom * string -> (nontop, 'a) atom
+  | Prefix : string * (nontop, 'a) atom -> (_, 'a) atom
+  | Suffix : (nontop, 'a) atom * string -> (_, 'a) atom
   | List   : (nontop, 'a) atom -> (top, 'a list) atom
   | List1  : (nontop, 'a) atom -> (top, 'a * 'a list) atom
+
+
+
 
 type ('fu, 'return, 'converter, 'returnc) query =
   | Nil  : ('r,'r, 'rc,'rc) query
   | Any  : ('r,'r, 'rc,'rc) query
 
-  | Cons : string * (_,'a) atom
+  | Cons : string * (top,'a) atom
       * (      'f, 'r, 'c, 'rc) query
      -> ('a -> 'f, 'r, 'c, 'rc) query
 
-  | Conv : string * (_,'a) atom
+  | Conv : string * (top,'a) atom
       * (      'f, 'r,                         'c, 'rc) query
      -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query
 
@@ -53,19 +56,19 @@ type ('fu, 'return, 'converter, 'returnc) path =
        ('f, 'r, 'c, 'rc) path * string
     -> ('f, 'r, 'c, 'rc) path
   | SuffixAtom :
-       ('f,'a -> 'r, 'c, 'rc) path * (_,'a) atom
+       ('f,'a -> 'r, 'c, 'rc) path * (top,'a) atom
     -> ('f,      'r, 'c, 'rc) path
   | SuffixConv :
-       ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path * (_,'a) atom
+       ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path * (top,'a) atom
     -> ('f,       'r, 'c,                         'rc) path
 
 type slash = Slash | NoSlash
 
-type ('f,'r,'c,'rc) conv_url =
+type ('f,'r,'c,'rc) url =
   | ConvUrl : slash
       * ('f, 'x,     'c, 'xc     ) path
       * (    'x, 'r,     'xc, 'rc) query
-     -> ('f,     'r, 'c,      'rc) conv_url
+     -> ('f,     'r, 'c,      'rc) url
 
 let ( ** ) (n,x) y = Cons (n,x, y)
 let ( **! ) (n,x) y = Conv (n,x,y)
@@ -97,17 +100,17 @@ type (_,_) convlist =
      * (                        'l, 'r) convlist
     -> (('a, 'b) Converter.t -> 'l, 'r) convlist
 
-(** A url is a convertible url and a list of converters.
+(** A finalized url is a convertible url and a list of converters.
     It simply quantifies existentially over the converters.
 
-    Note the return type of the convlist: [('f, 'r) url].
+    Note the return type of the convlist: [('f, 'r) furl].
     We will see why very soon.
 *)
-type ('f, 'r) url =
+type ('f, 'r) furl =
     Url :
-        ('f, 'r, 'c, ('f, 'r) url) conv_url
-      * (        'c, ('f, 'r) url) convlist
-     -> ('f, 'r ) url
+        ('f, 'r, 'c, ('f, 'r) furl) url
+      * (        'c, ('f, 'r) furl) convlist
+     -> ('f, 'r ) furl
 
 (**
    We want to construct the list of converters
@@ -136,18 +139,18 @@ let rec rev_append
 (** Our goal is to build the function that takes a convertible url,
     the list of convertible and returns a url.
 
-    In practice: [('f, 'r, 'c, ('f, 'r) url) conv_url -> 'c].
+    In practice: [('f, 'r, 'c, ('f, 'r) furl) url -> 'c].
     It justifies the return type of the conv list in {!url}.
 
     We proceed by CPS, passing the list of converters around
     while building a function to fill it.
 *)
 let rec finalize
-  : type r f c. (f, r, c, (f, r) url) conv_url -> c
-  = fun (ConvUrl (_, p, q) as conv_url) ->
+  : type r f c. (f, r, c, (f, r) furl) url -> c
+  = fun (ConvUrl (_, p, q) as url) ->
     finalize_path p @@ fun lp ->
     finalize_query q @@ fun lq ->
-    Url (conv_url, rev_append lp lq)
+    Url (url, rev_append lp lq)
 
 (** Once we have all these elements, it's simply type golf. *)
 
@@ -202,7 +205,7 @@ let rec eval_atom : type t a . (t,a) atom -> a -> string
   | List1 p ->
     (fun (x,l) -> String.concat "" @@ List.map (eval_atom p) @@ x::l)
 
-let eval_top_atom : type t a . (t,a) atom -> a -> string list
+let eval_top_atom : type a. (top,a) atom -> a -> string list
   = function
   | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
   | List p ->
@@ -214,8 +217,8 @@ let eval_top_atom : type t a . (t,a) atom -> a -> string list
 let rec eval_path
   : type r f c xc.
     (f,r,c,xc) path ->
-    (c, (_,_) url) convlist ->
-    ((xc, (_,_) url) convlist -> string option -> string list -> r) ->
+    (c, (_,_) furl) convlist ->
+    ((xc, (_,_) furl) convlist -> string option -> string list -> r) ->
     f
   = fun p l k -> match p with
     | Host s -> k l (Some s) []
@@ -233,8 +236,8 @@ let rec eval_path
 let rec eval_query
   : type r f c xc.
     (f,r,c,xc) query ->
-    (c, (_,_) url) convlist ->
-    ((xc, (_,_) url) convlist -> (string * string list) list -> r) ->
+    (c, (_,_) furl) convlist ->
+    ((xc, (_,_) furl) convlist -> (string * string list) list -> r) ->
     f
   = fun q l k -> match q with
     | Nil -> k l []
@@ -263,24 +266,25 @@ let eval url = keval url (fun x -> x)
 
 (** {2 matching} *)
 
-type (_,_) re_atom =
-  | Float     : (_, float) re_atom
-  | Int       : (_, int) re_atom
-  | Bool      : (_, bool) re_atom
-  | String    : (_, string) re_atom
-  | Regexp    : Re.t -> (_, string) re_atom
-  | Opt       : Re.markid * (nontop, 'a) re_atom -> (_, 'a option) re_atom
+type _ re_atom =
+  | Float     : float re_atom
+  | Int       : int re_atom
+  | Bool      : bool re_atom
+  | String    : string re_atom
+  | Regexp    : Re.t -> string re_atom
+  | Opt       : Re.markid * 'a re_atom -> 'a option re_atom
   | Or        :
-      Re.markid * (nontop, 'a) re_atom * Re.markid * (nontop,'b) re_atom
-    -> (_, ('a,'b) sum) re_atom
+      Re.markid * 'a re_atom * Re.markid * 'b re_atom
+    -> ('a,'b) sum re_atom
   | Seq       :
-      (nontop, 'a) re_atom * (nontop, 'b) re_atom -> (_, 'a * 'b) re_atom
+      'a re_atom * 'b re_atom -> ('a * 'b) re_atom
+  | Nest      : 'a re_atom -> 'a re_atom
 
-  | List      : (nontop, 'a) re_atom * Re.re -> (top, 'a list) re_atom
-  | List1     : (nontop, 'a) re_atom * Re.re -> (top, 'a * 'a list) re_atom
+  | List      : 'a re_atom * Re.re -> 'a list re_atom
+  | List1     : 'a re_atom * Re.re -> ('a * 'a list) re_atom
 
 let rec re_atom
-  : type t a. component:_ -> (t,a) atom -> (t,a) re_atom * Re.t
+  : type t a. component:_ -> (t,a) atom -> a re_atom * Re.t
   = let open Re in fun ~component -> function
     | Float       -> Float, group Furl_re.float
     | Int         -> Int, group Furl_re.arbitrary_int
@@ -296,10 +300,10 @@ let rec re_atom
       Or (id1, me1, id2, me2), alt [re1 ; re2]
     | Prefix (s,e)->
       let me, re = re_atom ~component e in
-      me, seq [str s ; re]
+      Nest me, seq [str s ; re]
     | Suffix (e,s)->
       let me, re = re_atom ~component e in
-      me, seq [re ; str s]
+      Nest me, seq [re ; str s]
     | Seq (e1,e2) ->
       let me1, re1 = re_atom ~component e1 in
       let me2, re2 = re_atom ~component e2 in
@@ -314,7 +318,7 @@ let rec re_atom
       List1 (me,Re.compile re), group @@ rep1 @@ no_group re
 
 let rec count_group
-  : type t a. (t,a) re_atom -> int
+  : type a. a re_atom -> int
   = function
     | Float  -> 1
     | Int  -> 1
@@ -324,13 +328,14 @@ let rec count_group
     | Opt (_,e) -> count_group e
     | Or (_,e1,_,e2) -> count_group e1 + count_group e2
     | Seq (e1,e2) -> count_group e1 + count_group e2
+    | Nest e -> count_group e
     | List _ -> 1
     | List1 _ -> 1
 
 let incrg e i = i + count_group e
 
 let rec extract_atom
-  : type t a. (t,a) re_atom -> int -> Re.substrings -> int * a
+  : type a. a re_atom -> int -> Re.substrings -> int * a
   = fun rea i s -> match rea with
     | Float  -> incrg rea i, float_of_string (Re.get s i)
     | Int    -> incrg rea i, int_of_string   (Re.get s i)
@@ -352,6 +357,7 @@ let rec extract_atom
       let i, v1 = extract_atom e1 i s in
       let i, v2 = extract_atom e2 i s in
       i, (v1, v2)
+    | Nest e -> extract_atom e i s
     | List (e,re) -> i+1, extract_list e re i s
     | List1 (e,re) ->
       match extract_list e re i s with
@@ -361,7 +367,7 @@ let rec extract_atom
           assert false
 
 and extract_list
-  : type t a. (t,a) re_atom -> Re.re -> int -> Re.substrings -> a list
+  : type a. a re_atom -> Re.re -> int -> Re.substrings -> a list
   = fun e re i s ->
     let aux s = snd @@ extract_atom e 1 s in
     let (pos, pos') = Re.get_ofs s i in
@@ -373,7 +379,7 @@ and extract_list
 
 
 let re_atom_path
-  : type t a . (t,a) atom -> (t,a) re_atom * Re.t
+  : type a . (_,a) atom -> a re_atom * Re.t
   =
   let open Re in
   let component = `Path in
@@ -397,11 +403,11 @@ let re_atom_path
 type (_,_,_,_) re_path =
   | Start : ('r,'r, 'rc, 'rc) re_path
   | SuffixAtom :
-       ('f, 'a -> 'r, 'c, 'rc) re_path * int * (_,'a) re_atom
+       ('f, 'a -> 'r, 'c, 'rc) re_path * int * 'a re_atom
     -> ('f,       'r, 'c, 'rc) re_path
   | SuffixConv :
        ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) re_path
-      * int *  (_,'a) re_atom
+      * int * 'a re_atom
     -> ('f,       'r, 'c,                         'rc) re_path
 
 let rec re_path
@@ -427,7 +433,7 @@ let rec re_path
 
 
 let re_atom_query
-  : type t a . (t,a) atom -> (t,a) re_atom * Re.t
+  : type a . (_,a) atom -> a re_atom * Re.t
   =
   let open Re in
   let component = `Query_value in
@@ -448,9 +454,9 @@ type ('fu,'ret,'converter,'retc) re_query =
   | Nil  : ('r,'r,'rc, 'rc) re_query
   | Any  : ('r,'r,'rc, 'rc) re_query
   | Cons :
-      (_,'a) re_atom * ('f,'r,'c,'rc) re_query
+      'a re_atom * ('f,'r,'c,'rc) re_query
     -> ('a -> 'f,'r,'c,'rc) re_query
-  | Conv : (_,'a) re_atom * ('f,'r,'c,'rc) re_query
+  | Conv : 'a re_atom * ('f,'r,'c,'rc) re_query
     -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) re_query
 
 let rec re_query
@@ -479,8 +485,8 @@ type ('f,'r,'c,'rc) re_url =
 
 
 
-let re_conv_url
-  : type r f rc fc . (r,f,rc,fc) conv_url -> (r,f,rc,fc) re_url * Re.t
+let re_url
+  : type r f rc fc . (r,f,rc,fc) url -> (r,f,rc,fc) re_url * Re.t
   = function ConvUrl(slash,p,q) ->
     let end_path = match slash with
       | NoSlash -> Re.epsilon
@@ -531,10 +537,10 @@ let re_conv_url
 let rec extract_path
   : type f x r c xc xc'.
     (f,x,c,xc) re_path ->
-    ((xc, (_, _) url) convlist -> x -> r * (xc', (_, _) url) convlist) ->
+    ((xc, (_, _) furl) convlist -> x -> r * (xc', (_, _) furl) convlist) ->
     Re.substrings ->
-    (c, (_, _) url) convlist ->
-    f -> r * (xc', (_, _) url) convlist
+    (c, (_, _) furl) convlist ->
+    f -> r * (xc', (_, _) furl) convlist
   = fun rp k subs cl -> match rp with
     | Start  -> k cl
     | SuffixAtom (rep, idx, rea) ->
@@ -554,8 +560,8 @@ let rec extract_query
   : type x r xc rc.
     (x,r,xc,rc) re_query ->
     int -> Re.substrings -> int array ->
-    (xc, (_, _) url) convlist ->
-    x -> r * (rc, (_, _) url) convlist
+    (xc, (_, _) furl) convlist ->
+    x -> r * (rc, (_, _) furl) convlist
   = fun rq i subs permutation cl f -> match rq with
     | Nil  -> f, cl
     | Any  -> f, cl
@@ -573,8 +579,8 @@ let rec extract_query
 
 let extract_url
   : type r f fc.
-    (f, r, fc, (_, _) url) re_url ->
-    (fc, (_, _) url) convlist ->
+    (f, r, fc, (_, _) furl) re_url ->
+    (fc, (_, _) furl) convlist ->
     Re.substrings -> f -> r
   = fun (ReUrl (rp, rq, permutation)) cl subs f ->
     let k = extract_query rq 0 subs permutation in
@@ -582,21 +588,21 @@ let extract_url
     r
 
 let get_re
-  : type r f. (f, r) url -> Re.t
-  = function Url (conv_url, _) ->
-    snd @@ re_conv_url conv_url
+  : type r f. (f, r) furl -> Re.t
+  = function Url (url, _) ->
+    snd @@ re_url url
 
 let extract
-  : type r f. (f, r) url -> f:f -> Uri.t -> r
+  : type r f. (f, r) furl -> f:f -> Uri.t -> r
   = function Url (conv_url,cl) ->
-    let re_url, re = re_conv_url conv_url in
+    let re_url, re = re_url conv_url in
     let re = Re.(compile @@ whole_string re) in
-    fun ~f url ->
-      let url =
-        Uri.with_query url @@
+    fun ~f uri ->
+      let uri =
+        Uri.with_query uri @@
         List.sort (fun (x,_) (y,_) -> compare (x: string) y) @@
-        Uri.query url
+        Uri.query uri
       in
-      let s = Uri.path_and_query url in
+      let s = Uri.path_and_query uri in
       let subs = Re.exec re s in
       extract_url re_url cl subs f
