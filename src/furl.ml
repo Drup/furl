@@ -253,10 +253,6 @@ let eval url = keval url (fun x -> x)
 
 (** {2 matching} *)
 
-let slash = Re.char '/'
-let comma = Re.char ','
-let amper = Re.char '&'
-
 type (_,_) re_atom =
   | Float     : (nontop, float) re_atom
   | Int       : (nontop, int) re_atom
@@ -272,41 +268,36 @@ type (_,_) re_atom =
   | List1     : (nontop, 'a) re_atom * Re.re -> (top, 'a * 'a list) re_atom
 
 let rec re_atom
-  : type t a. (t,a) atom -> (t,a) re_atom * Re.t
-  = let open Re in function
-    (* -?[0-9]+( .[0-9]* )? *)
-    | Float       ->
-      Float, group @@ seq [opt (char '-') ; rep1 digit ; opt (seq [char '.'; rep digit])]
-    (* -?[0-9]+ *)
-    | Int         -> Int, group @@ seq [opt (char '-') ; rep1 digit]
-    (* true|false *)
-    | Bool        -> Bool, group @@ alt [str "true" ; str "false"]
-    (* [^/]+ *)
-    | String      -> String, group @@ rep1 @@ compl [slash]
+  : type t a. component:_ -> (t,a) atom -> (t,a) re_atom * Re.t
+  = let open Re in fun ~component -> function
+    | Float       -> Float, group Furl_re.float
+    | Int         -> Int, group Furl_re.arbitrary_int
+    | Bool        -> Bool, group Furl_re.bool
+    | String      -> String, group @@ Furl_re.string component
     | Opt e       ->
-      let me, (id, re) = map_snd mark @@ re_atom e in
+      let me, (id, re) = map_snd mark @@ re_atom ~component e in
       Opt (id,me), alt [epsilon ; re]
     | Or (e1,e2)  ->
-      let me1, (id1, re1) = map_snd mark @@ re_atom e1 in
-      let me2, (id2, re2) = map_snd mark @@ re_atom e2 in
+      let me1, (id1, re1) = map_snd mark @@ re_atom ~component e1 in
+      let me2, (id2, re2) = map_snd mark @@ re_atom ~component e2 in
       Or (id1, me1, id2, me2), alt [re1 ; re2]
     | Prefix (s,e)->
-      let me, re = re_atom e in
+      let me, re = re_atom ~component e in
       me, seq [str s ; re]
     | Suffix (e,s)->
-      let me, re = re_atom e in
+      let me, re = re_atom ~component e in
       me, seq [re ; str s]
     | Seq (e1,e2) ->
-      let me1, re1 = re_atom e1 in
-      let me2, re2 = re_atom e2 in
+      let me1, re1 = re_atom ~component e1 in
+      let me2, re2 = re_atom ~component e2 in
       Seq (me1, me2), seq [re1; re2]
 
     (* top *)
     | List e      ->
-      let me, re = re_atom e in
+      let me, re = re_atom ~component e in
       List (me,Re.compile re), group @@ rep @@ no_group re
     | List1 e     ->
-      let me, re = re_atom e in
+      let me, re = re_atom ~component e in
       List1 (me,Re.compile re), group @@ rep1 @@ no_group re
 
 let rec count_group
@@ -368,20 +359,25 @@ and extract_list
 
 let re_atom_path
   : type t a . (t,a) atom -> (t,a) re_atom * Re.t
-  = let open Re in function
+  =
+  let open Re in
+  let component = `Path in
+  function
     | List  e ->
-      let me, re = re_atom e in
-      List (me, Re.compile re), group @@ rep @@ seq [slash; no_group re]
+      let me, re = re_atom ~component e in
+      List (me, Re.compile re),
+      group @@ Furl_re.list ~component 0 @@ no_group re
     | List1 e ->
-      let me, re = re_atom e in
-      List1 (me, Re.compile re), group @@ rep1 @@ seq [slash; no_group re]
+      let me, re = re_atom ~component e in
+      List1 (me, Re.compile re),
+      group @@ Furl_re.list ~component 1 @@ no_group re
     | Opt e ->
-      let me, re = re_atom e in
+      let me, re = re_atom ~component e in
       let id, re = mark re in
-      Opt (id,me), seq [alt [epsilon ; seq [slash ; re]]]
+      Opt (id,me), seq [alt [epsilon ; seq [Furl_re.slash ; re]]]
     | e ->
-      let me, re = re_atom e in
-      me, seq [slash; re]
+      let me, re = re_atom ~component e in
+      me, seq [Furl_re.slash; re]
 
 type (_,_,_,_) re_path =
   | Start : ('r,'r, 'rc, 'rc) re_path
@@ -403,7 +399,7 @@ let rec re_path
     | Rel    -> Start, 1, []
     | SuffixConst (p,s) ->
       let (p, nb_group, re) = re_path p in
-      p, nb_group, str s :: slash :: re
+      p, nb_group, str s :: Furl_re.slash :: re
     | SuffixAtom (p,a) ->
       let ma, ra = re_atom_path a in
       let (p, nb_group, re) = re_path p in
@@ -416,19 +412,20 @@ let rec re_path
 
 let re_atom_query
   : type t a . (t,a) atom -> (t,a) re_atom * Re.t
-  = let open Re in function
+  =
+  let open Re in
+  let component = `Query_value in
+  function
     | List  e ->
-      let me, re = re_atom e in
-      let re' = no_group re in
+      let me, re = re_atom ~component e in
       List (me, Re.compile re),
-      group @@ alt [ epsilon ; seq [ re' ; rep @@ seq [comma; re']] ]
+      group @@ Furl_re.list ~component 0 @@ no_group re
     | List1 e ->
-      let me, re = re_atom e in
-      let re' = no_group re in
+      let me, re = re_atom ~component e in
       List1 (me, Re.compile re),
-      group @@ seq [ re' ; rep @@ seq [comma; re']]
+      group @@ Furl_re.list ~component 1 @@ no_group re
     | e ->
-      let me, re = re_atom e in
+      let me, re = re_atom ~component e in
       me, re
 
 type ('fu,'ret,'converter,'retc) re_query =
@@ -496,11 +493,8 @@ let re_conv_url
           build_permutation nb_group (fun (_,_,i) -> i) reql rel
         in
 
-        let query_sep =
-          if not any_query then amper
-          else Re.(seq [amper; rep @@ seq [compl [amper] ; amper]])
-        in
-        let add_end_query =
+        let query_sep = Furl_re.query_sep any_query in
+        let add_around_query =
           if not any_query then fun x -> x
           else fun l -> Re.(rep any) :: l
         in
@@ -511,8 +505,9 @@ let re_conv_url
             Re.seq [Re.str (s ^ "=") ; re ] :: l
           ) []
           |> intersperse query_sep
-          |> add_end_query
+          |> add_around_query
           |> List.rev
+          |> add_around_query
         in
         Join(rep,req,t),
         Re.seq @@ List.rev_append repl (end_path :: Re.char '?' :: re)

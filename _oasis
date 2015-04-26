@@ -14,6 +14,7 @@ AlphaFeatures: ocamlbuild_more_args
 Library furl
   Path: src
   BuildDepends: uri, gen
+  InternalModules: Furl_re
   Modules: Furl
 
 AlphaFeatures: ocamlbuild_more_args

@@ -1,4 +1,4 @@
-open Path
+open Furl
 
 (* www.bla.com/foo/%i/bla/%f?truc=%s *)
 let raw_u = rel/"foo"/%Int/"bla"/%Float/?("truc", List Int)**!("a", String)**nil
@@ -18,7 +18,7 @@ let uri = eval (url ()) 3 (4.,[]) true "hello"
 
 let () =
   Format.printf "%a\n%!" Uri.pp_hum uri ;
-  extract (url ()) (Uri.of_string "/foo/3/4./?foo=false&cthing&bla=x") ~f:(fun i (f,fl) b s ->
+  extract (url ()) (Uri.of_string "/foo/3/4./?foo=false&athing&bla=x") ~f:(fun i (f,fl) b s ->
     Format.printf "%d (%a) %s %b"
       i
       (Format.pp_print_list
