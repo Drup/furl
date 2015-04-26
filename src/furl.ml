@@ -98,22 +98,53 @@ let (/!) a b = SuffixConv(a,b)
 let (/?) p q = Query (p,q)
 let (//?) p q = SlashQuery (p,q)
 
-(** {2 Proper urls} *)
 
-(** {3 Utilities Pseudo-lists} *)
+
+(** {2 Finalization} *)
+
+(** Finalization is the act of gathering all the converters in a list
+    and bundling it with a convertible url.
+
+    We use a typed append list for this with two typed variables
+    which correspond to 'c and 'rc from earlier.
+*)
 
 type (_,_) convlist =
   | Nil : ('a,'a) convlist
   | Conv :
-      ('a, 'b) Conv.t * ('l, 'r) convlist ->
-      (('a, 'b) Conv.t -> 'l, 'r) convlist
+      ('a, 'b) Conv.t
+      * ('l,                   'r) convlist
+    -> (('a, 'b) Conv.t -> 'l, 'r) convlist
 
+(** Bundling a list of converters and a convertible url is just a matter
+    of existential quantification over the converters.
+
+    Note the return type of the convlist: [('f, 'r) url].
+    We will see why very soon.
+*)
+
+type ('f, 'r) url =
+    Url :
+       ('f, 'r, 'c, ('f, 'r) url) conv_url *
+       ('c, ('f, 'r) url) convlist
+    -> ('f, 'r) url
+
+(**
+   We want to construct the list of converters
+   corresponding to the [c] type variable.
+
+   We will construct two lists:
+   - An append list for the queries: {!convlist}
+   - A postpend list for the path: {!vonclist}
+*)
 type (_,_) vonclist =
   | Nil : ('a, 'a) vonclist
   | Vonc :
       ('a, 'b) Conv.t * ('l, ('a, 'b) Conv.t -> 'r) vonclist ->
     ('l, 'r) vonclist
 
+(** We can write the statically typed rev_append.
+    Notice how the type variables chain appropriately. *)
 let rec rev_append
   : type c rc xc.
     (c, xc) vonclist -> (xc, rc) convlist -> (c, rc) convlist
@@ -122,39 +153,16 @@ let rec rev_append
     | Vonc (a,l) -> rev_append l (Conv(a,l2))
 
 
+(** Our goal is to build the function that takes a convertible url,
+    the list of convertible and returns a url.
 
-type ('f, 'r) url =
-    Url :
-       ('f, 'r, 'c, ('f, 'r) url) conv_url *
-       ('c, ('f, 'r) url) convlist
-    -> ('f, 'r) url
+    In practice: [('f, 'r, 'c, ('f, 'r) url) conv_url -> 'c].
+    It justifies the return type of the conv list in {!url}.
 
-
-(** {2 Finalization} *)
-
-let rec finalize_path
-  : type r f rc c.
-    (f,r,c,rc) path ->
-    ((c,rc) vonclist -> rc) -> c
-  = fun p k -> match p with
-    | Host _ -> k Nil
-    | Rel    -> k Nil
-    | SuffixConst (p, _) -> finalize_path p k
-    | SuffixAtom  (p, _) -> finalize_path p k
-    | SuffixConv  (p, _) ->
-      finalize_path p (fun l c -> k (Vonc(c,l)))
-
-let rec finalize_query
-  : type r f rc c.
-    (f,r,c,rc) query -> ((c,rc) convlist -> rc) -> c
-  = fun p k -> match p with
-    | Nil -> k Nil
-    | Any -> k Nil
-    | Cons (_,_,q) -> finalize_query q k
-    | Conv (_,_,q) ->
-      (fun c -> finalize_query q (fun l -> k (Conv (c,l))))
-
-let finalize
+    We proceed by CPS, passing the list of converters around
+    while building a function to fill it.
+*)
+let rec finalize
   : type r f c. (f, r, c, (f, r) url) conv_url -> c
   = fun u ->
     let f p q =
@@ -164,6 +172,30 @@ let finalize
     in match u with
       | Query (p,q)      -> f p q
       | SlashQuery (p,q) -> f p q
+
+(** Once we have all these elements, it's simply type golf. *)
+
+and finalize_path
+  : type r f rc c.
+    (f,r,c,rc) path -> ((c,rc) vonclist -> rc) -> c
+  = fun p k -> match p with
+    | Host _ -> k Nil
+    | Rel    -> k Nil
+    | SuffixConst (p, _) -> finalize_path p k
+    | SuffixAtom  (p, _) -> finalize_path p k
+    | SuffixConv  (p, _) ->
+      finalize_path p (fun l c -> k (Vonc(c,l)))
+
+and finalize_query
+  : type r f rc c.
+    (f,r,c,rc) query -> ((c,rc) convlist -> rc) -> c
+  = fun p k -> match p with
+    | Nil -> k Nil
+    | Any -> k Nil
+    | Cons (_,_,q) -> finalize_query q k
+    | Conv (_,_,q) ->
+      (fun c -> finalize_query q (fun l -> k (Conv (c,l))))
+
 
 (** {2 Evaluation functions} *)
 
