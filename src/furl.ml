@@ -46,44 +46,54 @@ type top = Top
 type nontop = NonTop
 
 type (_,_) atom =
-  | Float     : (nontop, float) atom
-  | Int       : (nontop, int) atom
-  | Bool      : (nontop, bool) atom
-  | String    : (nontop, string) atom
-  | Regexp    : Re.t -> (nontop, string) atom
-  | Opt       : (nontop, 'a) atom -> (_, 'a option) atom
-  | Or        : (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
-  | Seq       : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
-  | Prefix    : string * (nontop, 'a) atom -> (nontop, 'a) atom
-  | Suffix    : (nontop, 'a) atom * string -> (nontop, 'a) atom
-  | List      : (nontop, 'a) atom -> (top, 'a list) atom
-  | List1     : (nontop, 'a) atom -> (top, 'a * 'a list) atom
+  | Float  : (nontop, float) atom
+  | Int    : (nontop, int) atom
+  | Bool   : (nontop, bool) atom
+  | String : (nontop, string) atom
+  | Regexp : Re.t -> (nontop, string) atom
+  | Opt    : (nontop, 'a) atom -> (_, 'a option) atom
+  | Or     :
+      (nontop, 'a) atom * (nontop,'b) atom -> (nontop, ('a,'b) sum) atom
+  | Seq    : (nontop, 'a) atom * (nontop, 'b) atom -> (nontop, 'a * 'b) atom
+  | Prefix : string * (nontop, 'a) atom -> (nontop, 'a) atom
+  | Suffix : (nontop, 'a) atom * string -> (nontop, 'a) atom
+  | List   : (nontop, 'a) atom -> (top, 'a list) atom
+  | List1  : (nontop, 'a) atom -> (top, 'a * 'a list) atom
 
-type ( 'fu,'ret, 'converter, 'retc) query =
+type ('fu, 'return, 'converter, 'returnc) query =
   | Nil  : ('r,'r, 'rc,'rc) query
   | Any  : ('r,'r, 'rc,'rc) query
-  | Cons : string * (_,'a) atom * ( 'f,'r, 'c, 'rc) query
-    -> ( 'a -> 'f,'r, 'c, 'rc) query
-  | Conv : string * (_,'a) atom * ( 'f,'r, 'c, 'rc) query
-    -> ('b -> 'f, 'r, ('a, 'b) Conv.t -> 'c, 'rc) query
 
-type ( 'fu,'return, 'converter, 'returnc) path =
+  | Cons : string * (_,'a) atom
+      * (      'f, 'r, 'c, 'rc) query
+     -> ('a -> 'f, 'r, 'c, 'rc) query
+
+  | Conv : string * (_,'a) atom
+      * (      'f, 'r,                    'c, 'rc) query
+     -> ('b -> 'f, 'r, ('a, 'b) Conv.t -> 'c, 'rc) query
+
+type ('fu, 'return, 'converter, 'returnc) path =
   | Host : string -> ('r, 'r, 'rc, 'rc) path
-  | Rel : ('r, 'r ,'rc, 'rc) path
-  | SuffixConst : (('f, 'r, 'c, 'rc) path * string)
+  | Rel  : ('r, 'r ,'rc, 'rc) path
+  | SuffixConst :
+       ('f, 'r, 'c, 'rc) path * string
     -> ('f, 'r, 'c, 'rc) path
-  | SuffixAtom : (('f,'a -> 'r,'c,'rc) path * (_,'a) atom)
-    -> ('f,'r,'c,'rc) path
-  | SuffixConv : (('f, 'b -> 'r, 'c, ('a, 'b) Conv.t -> 'rc) path * (_,'a) atom)
-    -> ('f,'r,'c,'rc) path
+  | SuffixAtom :
+       ('f,'a -> 'r, 'c, 'rc) path * (_,'a) atom
+    -> ('f,      'r, 'c, 'rc) path
+  | SuffixConv :
+       ('f, 'b -> 'r, 'c, ('a, 'b) Conv.t -> 'rc) path * (_,'a) atom
+    -> ('f,       'r, 'c,                    'rc) path
 
 type ('f,'r,'c,'rc) conv_url =
   | Query :
-      ( ('f,'x,'c,'xc) path * ('x,'r,'xc,'rc) query ) ->
-    ('f,'r,'c,'rc) conv_url
+        ('f, 'x,     'c, 'xc     ) path
+      * (    'x, 'r,     'xc, 'rc) query
+     -> ('f,     'r, 'c,      'rc) conv_url
   | SlashQuery :
-      ( ('f,'x,'c,'xc) path * ('x,'r,'xc,'rc) query ) ->
-    ('f,'r,'c,'rc) conv_url
+        ('f, 'x,     'c, 'xc     ) path
+      * (    'x, 'r,     'xc, 'rc) query
+     -> ('f,     'r, 'c,      'rc) conv_url
 
 let ( ** ) (n,x) y = Cons (n,x, y)
 let ( **! ) (n,x) y = Conv (n,x,y)
@@ -105,15 +115,14 @@ let (//?) p q = SlashQuery (p,q)
 (** Finalization is the act of gathering all the converters in a list
     and bundling it with a convertible url.
 
-    We use a typed append list for this with two typed variables
+    We use a typed prepend list for this with two typed variables
     which correspond to 'c and 'rc from earlier.
 *)
 
 type (_,_) convlist =
   | Nil : ('a,'a) convlist
-  | Conv :
-      ('a, 'b) Conv.t
-      * ('l,                   'r) convlist
+  | Conv : ('a, 'b) Conv.t
+     * (                   'l, 'r) convlist
     -> (('a, 'b) Conv.t -> 'l, 'r) convlist
 
 (** Bundling a list of converters and a convertible url is just a matter
@@ -134,14 +143,14 @@ type ('f, 'r) url =
    corresponding to the [c] type variable.
 
    We will construct two lists:
-   - An append list for the queries: {!convlist}
+   - A prepend list for the queries: {!convlist}
    - A postpend list for the path: {!vonclist}
 *)
 type (_,_) vonclist =
   | Nil : ('a, 'a) vonclist
-  | Vonc :
-      ('a, 'b) Conv.t * ('l, ('a, 'b) Conv.t -> 'r) vonclist ->
-    ('l, 'r) vonclist
+  | Vonc :  ('a, 'b) Conv.t
+     * ('l, ('a, 'b) Conv.t -> 'r) vonclist
+    -> ('l,                    'r) vonclist
 
 (** We can write the statically typed rev_append.
     Notice how the type variables chain appropriately. *)
