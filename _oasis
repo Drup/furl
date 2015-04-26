@@ -1,7 +1,7 @@
 OASISFormat: 0.4
-Name:        Miniliom
+Name:        Furl
 Version:     0.1
-Synopsis:    Path description for urls.
+Synopsis:    Formatted Urls
 Authors:     Gabriel Radanne <drupyog@zoho.com>
 License:     MIT
 Plugins:     META (0.3), DevFiles (0.3)
@@ -9,28 +9,27 @@ Plugins:     META (0.3), DevFiles (0.3)
 AlphaFeatures: pure_interface
 BuildTools: ocamlbuild
 
-OCamlVersion: >= 4.01
 AlphaFeatures: ocamlbuild_more_args
 
-Library path
+Library furl
   Path: src
   BuildDepends: uri, gen
-  Modules: Path
+  Modules: Furl
 
 AlphaFeatures: ocamlbuild_more_args
 Document api
   Type: ocamlbuild (0.3)
   BuildTools: ocamldoc
 
-  Title: API reference for Path
+  Title: API reference for Furl
   XOCamlbuildPath: .
   XOCamlbuildExtraArgs:
     "-docflags '-colorize-code -short-functors -charset utf-8'"
-  XOCamlbuildLibraries: path
+  XOCamlbuildLibraries: furl
 
 Executable test
   Path: test
-  BuildDepends: path
+  BuildDepends: furl
   MainIs: test.ml
 
 Test test
