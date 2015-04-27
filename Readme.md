@@ -66,7 +66,7 @@ let handle_camlidaes =
 val handle_camlidaes : Uri.t -> camlidae list
 ```
 
-You can then give this handler to your favorite webservice and Tada, a camelidae web API.
+You can then give this handler to your favorite web server and Tada, a camelidae web API.
 
 You can also expose the formatted urls for clients:
 ```ocaml
