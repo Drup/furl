@@ -1,5 +1,12 @@
 (** Formatted Urls. *)
 
+(**
+   This library allows to build formatted url in the style of
+   the [Printf], [Format] and [Scanf] modules.
+
+   This can be used both for client and servers.
+*)
+
 (** Bidirectional converters from one type to another. *)
 module Converter : sig
   type ('a, 'b) t = {
@@ -42,30 +49,22 @@ type ('top,'a) atom =
   | List   : ([`Notop], 'a) atom -> ([`Top], 'a list) atom
   | List1  : ([`Notop], 'a) atom -> ([`Top], 'a * 'a list) atom
 
-(** {2 Query} *)
-
-type ('fu, 'ret, 'converter, 'retc) query
-
-val ( ** ) :
-  string * ([`Top],'a) atom ->
-  (      'c, 'b, 'e, 'd) query ->
-  ('a -> 'c, 'b, 'e, 'd) query
-
-val ( **! ) :
-  string * ([`Top],'a) atom ->
-  (      'c, 'd,                         'e, 'f) query ->
-  ('b -> 'c, 'd, ('a, 'b) Converter.t -> 'e, 'f) query
-
-val nil : ('a, 'a, 'b, 'b) query
-
-val any : ('a, 'a, 'b, 'b) query
-
 (** {2 Path} *)
 
-type ('fu, 'return, 'converter, 'returnc) path
+type ('fu, 'return, 'converter, 'returnc) path =
+  | Host : string -> ('r, 'r, 'rc, 'rc) path
+  | Rel  : ('r, 'r ,'rc, 'rc) path
+  | SuffixConst :
+      ('f, 'r, 'c, 'rc) path * string
+    -> ('f, 'r, 'c, 'rc) path
+  | SuffixAtom :
+      ('f,'a -> 'r, 'c, 'rc) path * ([`Top],'a) atom
+    -> ('f,      'r, 'c, 'rc) path
+  | SuffixConv :
+      ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path
+      * ([`Top],'a) atom
+    -> ('f,       'r, 'c,                         'rc) path
 
-val host : string -> ('a, 'a, 'b, 'b) path
-val rel : ('a, 'a, 'b, 'b) path
 val (/) :
   ('b, 'a, 'd, 'c) path -> string ->
   ('b, 'a, 'd, 'c) path
@@ -77,6 +76,31 @@ val (/%) :
 val (/!) :
   ('a, 'b -> 'c, 'd, ('e, 'b) Converter.t -> 'f) path -> ([`Top], 'e) atom ->
   ('a,       'c, 'd,                         'f) path
+
+(** {2 Query} *)
+
+type ('fu, 'return, 'converter, 'returnc) query =
+  | Nil  : ('r,'r, 'rc,'rc) query
+  | Any  : ('r,'r, 'rc,'rc) query
+
+  | Cons : string * ([`Top],'a) atom
+      * (      'f, 'r, 'c, 'rc) query
+    -> ('a -> 'f, 'r, 'c, 'rc) query
+
+  | Conv : string * ([`Top],'a) atom
+      * (      'f, 'r,                         'c, 'rc) query
+    -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query
+
+val ( ** ) :
+  string * ([`Top],'a) atom ->
+  (      'c, 'b, 'e, 'd) query ->
+  ('a -> 'c, 'b, 'e, 'd) query
+
+val ( **! ) :
+  string * ([`Top],'a) atom ->
+  (      'c, 'd,                         'e, 'f) query ->
+  ('b -> 'c, 'd, ('a, 'b) Converter.t -> 'e, 'f) query
+
 
 (** {2 Convertible Url} *)
 
