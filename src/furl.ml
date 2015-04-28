@@ -147,11 +147,7 @@ and ('f, 'r) furl =
 
 let ( ** ) (n,x) y = Cons (n,x, y)
 let ( **! ) (n,x) y  : _ query = Conv (n,x,y)
-let nil : _ query = Nil
-let any = Any
 
-let host x = Host x
-let rel = Rel
 let (/) a b = SuffixConst(a,b)
 let (/%) a b = SuffixAtom(a,b)
 let (/!) a b = SuffixConv(a,b)
