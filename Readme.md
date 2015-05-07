@@ -18,13 +18,13 @@ opam pin add re https://github.com/Drup/ocaml-re.git#pmarks
 Let's imagine we want to build a REST service indexing [Camelidaes](https://species.wikimedia.org/wiki/Camelidae).
 
 ```ocaml
-let camlidae = Furl.Host "www.camlidae.ml"
+let camlidae () = Furl.host "www.camlidae.ml"
 ```
 
 We can query a Camelidae by name:
 ```ocaml
 let by_name () =
-  Furl.(finalize @@ camlidae/"name"/%String/?Nil)
+  Furl.(finalize @@ ~$camlidae / "name" /% String /? nil)
 val by_name : unit -> (string -> 'a, 'a) Furl.furl
 ```
 
@@ -36,14 +36,14 @@ corresponding to the parameters of the url. `'r` is the return type, which could
 We can also query a list of camelidae by humps:
 ```ocaml
 let by_humps () =
-  Furl.(finalize @@ camlidae/"humps"/%Int/?Nil)
+  Furl.(finalize @@ ~$camlidae / "humps" /% Int /? nil)
 val by_humps : unit -> (int -> 'a, 'a) Furl.furl
 ```
 
 This is nice, but we want to refine the list by humps to only show non extinct camelidaes:
 ```ocaml
 let by_humps () =
-  Furl.(finalize @@ camlidae/"humps"/%Int/?("extinct",Opt Bool)**Nil)
+  Furl.(finalize @@ ~$camlidae / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
 val by_humps : unit -> (int -> bool option -> 'a, 'a) Furl.furl
 ```
 
@@ -52,10 +52,10 @@ We can now build a handler answering to these endpoints:
 ```ocaml
 let handle_camlidaes =
   Furl.match_url [
-    Furl.ex (by_name ()) (fun n ->
+    Furl.(route ~$by_name) (fun n ->
       List.filter (fun c -> c.name = n) list_camlidaes
     ) ;
-    Furl.ex (by_humps ()) (fun humps -> function
+    Furl.(route ~$by_humps) (fun humps -> function
       | None ->
         List.filter (fun c -> c.humps = humps) list_camlidaes
       | Some b ->
@@ -79,6 +79,8 @@ Then you can use your favorite http client to get the answer we all want:
 fetch_http @@ query_by_hump 2 (Some false) ;;
 ["Bactrian camel"; "Wild camel"]
 ```
+
+See [camlidae.ml](test/camlidae.ml) for the complete working example.
 
 ## Principles
 
