@@ -131,9 +131,6 @@ module Types = struct
 
 end
 
-type ('f,'r,'c,'rc) url = ('f,'r,'c,'rc) Types.url_ty
-
-type slash = Types.slash = Slash | NoSlash | MaybeSlash
 
 (* We need the constructors in scope,
    disambiguation doesn't work on GADTs. *)
@@ -198,8 +195,16 @@ module Query = struct
 
 end
 
-let url ?(slash=NoSlash) path query =
-  ConvUrl (slash, path, query)
+module Url = struct
+
+  type ('f,'r,'c,'rc) t = ('f,'r,'c,'rc) Types.url_ty
+
+  type slash = Types.slash = Slash | NoSlash | MaybeSlash
+
+  let make ?(slash=NoSlash) path query =
+    ConvUrl (slash, path, query)
+
+end
 
 let nil = Query.nil
 let any = Query.any
@@ -212,9 +217,9 @@ let (/)  = Path.add
 let (/%) = Path.add_atom
 let (/!) = Path.add_conv
 
-let (/?) path query  = url ~slash:NoSlash path query
-let (//?) path query = url ~slash:Slash path query
-let (/??) path query = url ~slash:MaybeSlash path query
+let (/?) path query  = Url.make ~slash:NoSlash path query
+let (//?) path query = Url.make ~slash:Slash path query
+let (/??) path query = Url.make ~slash:MaybeSlash path query
 
 let (~$) f = f ()
 
@@ -227,11 +232,11 @@ let (~$) f = f ()
 (* If this type is put in the Types module,
    the typechecker cannot check exhaustiveness of the eval function.
 *)
-type ('f, 'r) furl =
+type ('f, 'r) t =
     Url :
-       ('f, 'r, 'c, ('f, 'r) furl) url
-     * (        'c, ('f, 'r) furl) convlist
-    -> ('f, 'r ) furl
+       ('f, 'r, 'c, ('f, 'r) t) Url.t
+     * (        'c, ('f, 'r) t) convlist
+    -> ('f, 'r ) t
   (* Note the return type of the convlist and the query: ('f, 'r) furl.
      This is needed to write finalize.
   *)
@@ -261,7 +266,7 @@ type ('f, 'r) furl =
     while building a function to fill it.
 *)
 let rec finalize
-  : type r f c. (f,r,c,(f,r)furl) url -> c
+  : type r f c. (f,r,c,(f,r) t) Url.t -> c
   = fun (ConvUrl (_, p, q) as url) ->
     finalize_path p @@ fun lp ->
     finalize_query q @@ fun lq ->
@@ -337,8 +342,8 @@ let eval_top_atom : type a. ([`Top],a) atom -> a -> string list
 let rec eval_path
   : type r f c xc.
     (f,r,c,xc) Path.t ->
-    (c, (_,_) furl) convlist ->
-    ((xc, (_,_) furl) convlist -> string option -> string list -> r) ->
+    (c, (_,_) t) convlist ->
+    ((xc, (_,_) t) convlist -> string option -> string list -> r) ->
     f
   = fun p l k -> match p with
     | Host s -> k l (Some s) []
@@ -356,8 +361,8 @@ let rec eval_path
 let rec eval_query
   : type r f c xc.
     (f,r,c,xc) Query.t ->
-    (c, (_,_) furl) convlist ->
-    ((xc, (_,_) furl) convlist -> (string * string list) list -> r) ->
+    (c, (_,_) t) convlist ->
+    ((xc, (_,_) t) convlist -> (string * string list) list -> r) ->
     f
   = fun q cl k -> match q with
     | Nil -> k cl []
@@ -597,12 +602,12 @@ let rec re_query
 
 type ('f,'r,'c) re_url =
   | ReUrl :
-       ('f, 'x,    'c, 'xc               ) re_path
-     * (    'x, 'r,    'xc, ('f, 'r) furl) re_query * int array
+       ('f, 'x,    'c, 'xc            ) re_path
+     * (    'x, 'r,    'xc, ('f, 'r) t) re_query * int array
     -> ('f,'r,'c) re_url
 
 let re_url
-  : type f r c. (f,r,c,(f,r)furl) url -> (f,r,c) re_url * Re.t
+  : type f r c. (f,r,c,(f,r) t) Url.t -> (f,r,c) re_url * Re.t
   = function ConvUrl(slash,p,q) ->
     let end_path = match slash with
       | NoSlash -> Re.epsilon
@@ -647,7 +652,7 @@ let re_url
         Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
 
 let get_re
-  : type r f. (f, r) furl -> Re.t
+  : type r f. (f, r) t -> Re.t
   = function Url (url, _) ->
     snd @@ re_url url
 
@@ -712,8 +717,8 @@ let rec extract_path
   : type f x r c xc xc'.
     (f,x,c,xc) re_path ->
     Re.substrings ->
-    ((xc, (_, _) furl) convlist -> x -> r * (xc', (_, _) furl) convlist) ->
-      (c, (_, _) furl) convlist -> f -> r * (xc', (_, _) furl) convlist
+    ((xc, (_, _) t) convlist -> x -> r * (xc', (_, _) t) convlist) ->
+      (c, (_, _) t) convlist -> f -> r * (xc', (_, _) t) convlist
   = fun wp subs k -> match wp with
     | Start  -> k
     | SuffixAtom (rep, idx, rea) ->
@@ -732,8 +737,8 @@ let rec extract_query
   : type x r xc rc.
     (x,r,xc,rc) re_query ->
     int -> Re.substrings -> int array ->
-    (xc, (_, _) furl) convlist ->
-    x -> r * (rc, (_, _) furl) convlist
+    (xc, (_, _) t) convlist ->
+    x -> r * (rc, (_, _) t) convlist
   = fun wq i subs permutation cl f -> match wq with
     | Nil  -> f, cl
     | Any  -> f, cl
@@ -751,7 +756,7 @@ let rec extract_query
 let extract_url
   : type r f fc.
     (f, r, fc) re_url ->
-    (fc, (f, r) furl) convlist ->
+    (fc, (f, r) t) convlist ->
     Re.substrings -> f -> r
   = fun (ReUrl (wp, wq, permutation)) cl subs f ->
     let k = extract_query wq 0 subs permutation in
@@ -766,7 +771,7 @@ let prepare_uri uri =
   |> Uri.path_and_query
 
 let extract
-  : type r f. (f, r) furl -> f:f -> Uri.t -> r
+  : type r f. (f, r) t -> f:f -> Uri.t -> r
   = function Url (conv_url,cl) ->
     let re_url, re = re_url conv_url in
     let re = Re.(compile @@ whole_string re) in
@@ -779,14 +784,14 @@ let extract
 (** {4 Multiple match} *)
 
 type 'r ex =
-  Ex : ('f, 'r) furl * 'f -> 'r ex
+  Ex : ('f, 'r) t * 'f -> 'r ex
 
 let ex url f = Ex (url, f)
 
 type 'r re_ex =
     ReEx :
       'f * Re.markid * ('f, 'r, 'c) re_url
-      * ('c,('f,'r) furl) convlist -> 'r re_ex
+      * ('c,('f,'r) t) convlist -> 'r re_ex
 
 
 (* It's important to keep the order here, since Re will choose
