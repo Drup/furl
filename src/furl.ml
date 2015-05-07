@@ -177,6 +177,14 @@ module Query = struct
   let add n x query = Cons (n,x,query)
   let add_conv n x query : _ t = Conv (n,x,query)
 
+  let rec make_any
+    : type f r c rc. (f,r,c,rc) t -> (f,r,c,rc) t
+    = function
+      | Nil -> Any
+      | Any -> Any
+      | Cons (n,x,q) -> Cons(n,x,make_any q)
+      | Conv (n,x,q) -> Conv(n,x,make_any q)
+
   let rec concat
     : type f r x c rc xc.
       (f,x,  c,xc   ) t ->
@@ -184,7 +192,7 @@ module Query = struct
       (f,  r,c,   rc) t
     = fun q1 q2 -> match q1 with
       | Nil  -> q2
-      | Any  -> q2
+      | Any  -> make_any q2
       | Cons (n,x,q) -> Cons (n,x, concat q q2)
       | Conv (n,x,q) -> Conv (n,x, concat q q2)
 
