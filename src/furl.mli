@@ -246,10 +246,12 @@ val extract : ('f, 'r) t -> f:'f -> Uri.t -> 'r
 
 val get_re : ('f, 'r) t -> Re.t
 
-type 'r ex
-val ex : ('f, 'r) t -> 'f -> 'r ex
+type 'r route
+val route : ('f, 'r) t -> 'f -> 'r route
 
-val match_url : default:(Uri.t -> 'r) -> 'r ex list -> Uri.t -> 'r
+val (-->) : ('f, 'r) t -> 'f -> 'r route
+
+val match_url : default:(Uri.t -> 'r) -> 'r route list -> Uri.t -> 'r
 
 
 (** {2 Utils} *)

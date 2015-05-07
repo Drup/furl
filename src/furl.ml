@@ -783,10 +783,11 @@ let extract
 
 (** {4 Multiple match} *)
 
-type 'r ex =
-  Ex : ('f, 'r) t * 'f -> 'r ex
+type 'r route = Route : ('f, 'r) t * 'f -> 'r route
 
-let ex url f = Ex (url, f)
+let route url f = Route (url, f)
+
+let (-->) = route
 
 type 'r re_ex =
     ReEx :
@@ -799,7 +800,7 @@ type 'r re_ex =
 *)
 let rec build_info_list = function
   | [] -> [], []
-  | Ex (Url (conv_url,cl), f) :: l ->
+  | Route (Url (conv_url,cl), f) :: l ->
     let rel, wl = build_info_list l in
     let re_url, re = re_url conv_url in
     let id, re = Re.mark re in
@@ -817,7 +818,7 @@ let rec find_and_trigger
 
 let match_url
   : type r.
-    default:(Uri.t -> r) -> r ex list -> Uri.t -> r
+    default:(Uri.t -> r) -> r route list -> Uri.t -> r
   = fun ~default l ->
     let rel, wl = build_info_list l in
     let re = Re.(compile @@ whole_string @@ alt rel) in
