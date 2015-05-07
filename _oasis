@@ -37,3 +37,9 @@ Test test
   Command: $test
   TestTools: test
   WorkingDirectory: _build
+
+
+Executable camlidae
+  Path: test
+  BuildDepends: furl
+  MainIs: camlidae.ml
