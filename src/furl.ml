@@ -59,9 +59,9 @@ type (_,_) convlist =
 (** Postpend list of converters *)
 type (_,_) vonclist =
   | Nil : ('a, 'a) vonclist
-  | Vonc :  ('a, 'b) Converter.t
+  | Vonc : ('a, 'b) Converter.t
       * ('l, ('a, 'b) Converter.t -> 'r) vonclist
-     -> ('l,                    'r) vonclist
+     -> ('l,                         'r) vonclist
 
 (** We can write the statically typed rev_append.
     Notice how the type variables chain appropriately. *)
@@ -72,11 +72,7 @@ let rec rev_append
     | Nil -> l2
     | Vonc (a,l) -> rev_append l (Conv(a,l2))
 
-
-(** Ideally, these types should be a in a module, however the typechecker
-    is more precise when they are here and avoid triggering incomplete pattern
-    match warnings in presence of GADT type constraints.
-*)
+(** {2 The various types} *)
 
 type (_,_) atom =
   | Float  : (_, float) atom
@@ -94,68 +90,145 @@ type (_,_) atom =
   | List   : ([`Notop], 'a) atom -> ([`Top], 'a list) atom
   | List1  : ([`Notop], 'a) atom -> ([`Top], 'a * 'a list) atom
 
-type slash = Slash | NoSlash
+module Types = struct
 
-type ('fu, 'return, 'converter, 'returnc) path =
-  | Host : string -> ('r, 'r, 'rc, 'rc) path
-  | Rel  : ('r, 'r ,'rc, 'rc) path
-  | SuffixConst :
-      ('f, 'r, 'c, 'rc) path * string
-    -> ('f, 'r, 'c, 'rc) path
-  | SuffixAtom :
-      ('f,'a -> 'r, 'c, 'rc) path * ([`Top],'a) atom
-    -> ('f,      'r, 'c, 'rc) path
-  | SuffixConv :
-      ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path
-      * ([`Top],'a) atom
-    -> ('f,       'r, 'c,                         'rc) path
+  type ('fu, 'return, 'converter, 'returnc) path_ty =
+    | Host : string -> ('r, 'r, 'rc, 'rc) path_ty
+    | Rel  : ('r, 'r ,'rc, 'rc) path_ty
+    | SuffixConst :
+        ('f, 'r, 'c, 'rc) path_ty * string
+     -> ('f, 'r, 'c, 'rc) path_ty
+    | SuffixAtom :
+        ('f,'a -> 'r, 'c, 'rc) path_ty * ([`Top],'a) atom
+     -> ('f,      'r, 'c, 'rc) path_ty
+    | SuffixConv :
+        ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path_ty
+        * ([`Top],'a) atom
+     -> ('f,       'r, 'c,                         'rc) path_ty
 
-type ('fu, 'return, 'converter, 'returnc) query =
-  | Nil  : ('r,'r, 'rc,'rc) query
-  | Any  : ('r,'r, 'rc,'rc) query
+  type ('fu, 'return, 'converter, 'returnc) query_ty =
+    | Nil  : ('r,'r, 'rc,'rc) query_ty
+    | Any  : ('r,'r, 'rc,'rc) query_ty
 
-  | Cons : string * ([`Top],'a) atom
-      * (      'f, 'r, 'c, 'rc) query
-    -> ('a -> 'f, 'r, 'c, 'rc) query
+    | Cons : string * ([`Top],'a) atom
+        * (      'f, 'r, 'c, 'rc) query_ty
+       -> ('a -> 'f, 'r, 'c, 'rc) query_ty
 
-  | Conv : string * ([`Top],'a) atom
-      * (      'f, 'r,                         'c, 'rc) query
-    -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query
+    | Conv : string * ([`Top],'a) atom
+        * (      'f, 'r,                         'c, 'rc) query_ty
+       -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query_ty
 
-(** A url is a path and a query.
-    Types complete types is the concatenation of both.
-*)
-and ('f,'r,'c) url =
-  | ConvUrl : slash
-      * ('f, 'x,     'c, 'xc               ) path
-      * (    'x, 'r,     'xc, ('f, 'r) furl) query
-    -> ('f,     'r, 'c) url
+  type slash = Slash | NoSlash | MaybeSlash
+
+  (** A url is a path and a query (and potentially a slash).
+      The type is the concatenation of both types.
+  *)
+  type ('f,'r,'c, 'rc) url_ty =
+    | ConvUrl : slash
+        * ('f, 'x,     'c, 'xc     ) path_ty
+        * (    'x, 'r,     'xc, 'rc) query_ty
+       -> ('f,     'r, 'c,      'rc) url_ty
+
+end
+
+type ('f,'r,'c,'rc) url = ('f,'r,'c,'rc) Types.url_ty
+
+type slash = Types.slash = Slash | NoSlash | MaybeSlash
+
+(* We need the constructors in scope,
+   disambiguation doesn't work on GADTs. *)
+open! Types
+
+
+(** {2 Combinators} *)
+
+module Path = struct
+
+  type ('f,'r,'c,'rc) t = ('f,'r,'c,'rc) Types.path_ty
+
+  let host s = Host s
+  let relative = Rel
+
+  let add path b = SuffixConst(path,b)
+  let add_atom path b = SuffixAtom(path,b)
+  let add_conv path b = SuffixConv(path,b)
+
+  let rec concat
+    : type f r x c rc xc.
+      (f,x,  c,xc   ) t ->
+      (  x,r,  xc,rc) t ->
+      (f,  r,c,   rc) t
+    = fun p1 p2 -> match p2 with
+      | Host _ -> p1
+      | Rel  -> p1
+      | SuffixConst (p,s) -> SuffixConst(concat p1 p, s)
+      | SuffixAtom (p,a) -> SuffixAtom(concat p1 p, a)
+      | SuffixConv (p,a) -> SuffixConv(concat p1 p, a)
+
+end
+
+module Query = struct
+
+  type ('f,'r,'c,'rc) t = ('f,'r,'c,'rc) Types.query_ty
+
+  let nil : _ t = Nil
+  let any  = Any
+
+  let add n x query = Cons (n,x,query)
+  let add_conv n x query : _ t = Conv (n,x,query)
+
+  let rec concat
+    : type f r x c rc xc.
+      (f,x,  c,xc   ) t ->
+      (  x,r,  xc,rc) t ->
+      (f,  r,c,   rc) t
+    = fun q1 q2 -> match q1 with
+      | Nil  -> q2
+      | Any  -> q2
+      | Cons (n,x,q) -> Cons (n,x, concat q q2)
+      | Conv (n,x,q) -> Conv (n,x, concat q q2)
+
+end
+
+let url ?(slash=NoSlash) path query =
+  ConvUrl (slash, path, query)
+
+let nil = Query.nil
+let any = Query.any
+let ( ** )  (n,x) q = Query.add n x q
+let ( **! ) (n,x) q = Query.add_conv n x q
+
+let host = Path.host
+let rel  = Path.relative
+let (/)  = Path.add
+let (/%) = Path.add_atom
+let (/!) = Path.add_conv
+
+let (/?) path query  = url ~slash:NoSlash path query
+let (//?) path query = url ~slash:Slash path query
+let (/??) path query = url ~slash:MaybeSlash path query
+
+let (~$) f = f ()
+
+(** {2 Finalization} *)
+
 
 (** A finalized url is a convertible url and a list of converters.
     It simply quantifies existentially over the converters.
 *)
-and ('f, 'r) furl =
-    Url :
-      ('f, 'r, 'c) url
-      * (      'c, ('f, 'r) furl) convlist
-    -> ('f, 'r ) furl
-
-(** Note the return type of the convlist and the query: [('f, 'r) furl],
-    This is needed to write finalize.
+(* If this type is put in the Types module,
+   the typechecker cannot check exhaustiveness of the eval function.
 *)
+type ('f, 'r) furl =
+    Url :
+       ('f, 'r, 'c, ('f, 'r) furl) url
+     * (        'c, ('f, 'r) furl) convlist
+    -> ('f, 'r ) furl
+  (* Note the return type of the convlist and the query: ('f, 'r) furl.
+     This is needed to write finalize.
+  *)
 
 
-let ( ** ) (n,x) y = Cons (n,x, y)
-let ( **! ) (n,x) y  : _ query = Conv (n,x,y)
-
-let (/) a b = SuffixConst(a,b)
-let (/%) a b = SuffixAtom(a,b)
-let (/!) a b = SuffixConv(a,b)
-let (/?) p q = ConvUrl (NoSlash,p,q)
-let (//?) p q = ConvUrl (Slash,p,q)
-
-
-(** {2 Finalization} *)
 
 (** Finalization is the act of gathering all the converters in a list
     and bundling it with a convertible url.
@@ -180,7 +253,7 @@ let (//?) p q = ConvUrl (Slash,p,q)
     while building a function to fill it.
 *)
 let rec finalize
-  : type r f c. (f, r, c) url -> c
+  : type r f c. (f,r,c,(f,r)furl) url -> c
   = fun (ConvUrl (_, p, q) as url) ->
     finalize_path p @@ fun lp ->
     finalize_query q @@ fun lq ->
@@ -190,7 +263,7 @@ let rec finalize
 
 and finalize_path
   : type r f rc c.
-    (f,r,c,rc) path -> ((c,rc) vonclist -> rc) -> c
+    (f,r,c,rc) Path.t -> ((c,rc) vonclist -> rc) -> c
   = fun p k -> match p with
     | Host _ -> k Nil
     | Rel    -> k Nil
@@ -201,7 +274,7 @@ and finalize_path
 
 and finalize_query
   : type r f rc c.
-    (f,r,c,rc) query -> ((c,rc) convlist -> rc) -> c
+    (f,r,c,rc) Query.t -> ((c,rc) convlist -> rc) -> c
   = fun p k -> match p with
     | Nil -> k Nil
     | Any -> k Nil
@@ -255,7 +328,7 @@ let eval_top_atom : type a. ([`Top],a) atom -> a -> string list
 
 let rec eval_path
   : type r f c xc.
-    (f,r,c,xc) path ->
+    (f,r,c,xc) Path.t ->
     (c, (_,_) furl) convlist ->
     ((xc, (_,_) furl) convlist -> string option -> string list -> r) ->
     f
@@ -274,7 +347,7 @@ let rec eval_path
 
 let rec eval_query
   : type r f c xc.
-    (f,r,c,xc) query ->
+    (f,r,c,xc) Query.t ->
     (c, (_,_) furl) convlist ->
     ((xc, (_,_) furl) convlist -> (string * string list) list -> r) ->
     f
@@ -295,7 +368,8 @@ let keval (Url (ConvUrl(slash,p,q),cl)) k =
   k @@
   let path = match slash with
     | NoSlash -> "" :: path
-    | Slash -> path
+    | Slash
+    | MaybeSlash -> path
   in Uri.make
     ?host
     ~path:(String.concat "/" @@ List.rev path)
@@ -467,7 +541,7 @@ type (_,_,_,_) re_path =
 
 let rec re_path
   : type r f rc fc .
-    (f, r, fc, rc) path ->
+    (f, r, fc, rc) Path.t ->
     (f, r, fc, rc) re_path * int * Re.t list
   = let open Re in function
     | Host s ->
@@ -498,7 +572,7 @@ type ('fu,'ret,'converter,'retc) re_query =
 
 let rec re_query
   : type r f rc fc .
-    (f, r, fc, rc) query ->
+    (f, r, fc, rc) Query.t ->
     (f, r, fc, rc) re_query * bool * (string * (Re.t * int)) list
   = function
     | Nil -> Nil, false, []
@@ -520,11 +594,12 @@ type ('f,'r,'c) re_url =
     -> ('f,'r,'c) re_url
 
 let re_url
-  : type f r c. (f,r,c) url -> (f,r,c) re_url * Re.t
+  : type f r c. (f,r,c,(f,r)furl) url -> (f,r,c) re_url * Re.t
   = function ConvUrl(slash,p,q) ->
     let end_path = match slash with
       | NoSlash -> Re.epsilon
       | Slash -> Re.char '/'
+      | MaybeSlash -> Re.(opt @@ char '/')
     in
     let (wp, nb_group, rp) = re_path p in
     match q with

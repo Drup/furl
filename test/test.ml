@@ -1,23 +1,27 @@
-open Furl
 
 (* www.bla.com/foo/%i/bla/%f?truc=%s *)
-let raw_u = Rel/"foo"/%Int/"bla"/%Float/?("truc", List Int)**("a", String)**Nil
-let url = finalize raw_u
+let raw_u () =
+  Furl.(
+    rel/"foo"/%Int/"bla"/%Float/?("truc", List Int)**("a", String)**nil
+  )
+let url () = Furl.(finalize ~$raw_u)
 
-let uri = eval url 3 5. [1;2] "bla"
+let uri = Furl.(eval ~$url) 3 5. [1;2] "bla"
 
 let () =
   Format.printf "%a\n%!" Uri.pp_hum uri
 
 let raw_u () =
-  Rel/"foo"/%Int/%List1 Float//?("foo",Bool)**("bla",String)**Any
-let url () = finalize @@ raw_u ()
-let uri = eval (url ()) 3 (4.,[]) true "hello"
+  Furl.(
+    rel/"foo"/%Int/%List1 Float//?("foo",Bool)**("bla",String)**any
+  )
+let url () = Furl.(finalize ~$raw_u)
+let uri = Furl.(eval ~$url) 3 (4.,[]) true "hello"
 
 let () =
   Format.printf "%a\n%!" Uri.pp_hum uri ;
 
-  extract (url ())
+  Furl.(extract ~$url)
     (Uri.of_string "/foo/3/4./?foo=false&athing&bla=x")
     ~f:(fun i (f,fl) b s ->
       Format.printf "%d (%a) %s %b"
