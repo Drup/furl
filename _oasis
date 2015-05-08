@@ -17,6 +17,11 @@ Library furl
   InternalModules: Furl_re, Furl_utils
   Modules: Furl
 
+Library furl_ppx
+  Path: ppx
+  BuildDepends: compiler-libs, ppx_tools, ppx_tools.metaquot
+  Modules: Furl_ppx
+
 AlphaFeatures: ocamlbuild_more_args
 Document api
   Type: ocamlbuild (0.3)
