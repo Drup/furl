@@ -58,41 +58,43 @@ module Types : sig
   type ('fu, 'return, 'converter, 'returnc) path_ty =
     | Host : string -> ('r, 'r, 'rc, 'rc) path_ty
     | Rel  : ('r, 'r ,'rc, 'rc) path_ty
-    | SuffixConst :
+    | PathConst :
         ('f, 'r, 'c, 'rc) path_ty * string
      -> ('f, 'r, 'c, 'rc) path_ty
-    | SuffixAtom :
+    | PathAtom :
         ('f,'a -> 'r, 'c, 'rc) path_ty * ([`Top],'a) atom
      -> ('f,      'r, 'c, 'rc) path_ty
-    | SuffixConv :
+    | PathConv :
         ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path_ty
-      * ([`Top],'a) atom
+        * ([`Top],'a) atom
      -> ('f,       'r, 'c,                         'rc) path_ty
 
   type ('fu, 'return, 'converter, 'returnc) query_ty =
     | Nil  : ('r,'r, 'rc,'rc) query_ty
     | Any  : ('r,'r, 'rc,'rc) query_ty
 
-    | Cons : string * ([`Top],'a) atom
-       * (      'f, 'r, 'c, 'rc) query_ty
-      -> ('a -> 'f, 'r, 'c, 'rc) query_ty
+    | QueryAtom : string * ([`Top],'a) atom
+        * (      'f, 'r, 'c, 'rc) query_ty
+       -> ('a -> 'f, 'r, 'c, 'rc) query_ty
 
-    | Conv : string * ([`Top],'a) atom
-       * (      'f, 'r,                         'c, 'rc) query_ty
-      -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query_ty
+    | QueryConv : string * ([`Top],'a) atom
+        * (      'f, 'r,                         'c, 'rc) query_ty
+       -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query_ty
 
   type slash = Slash | NoSlash | MaybeSlash
 
   (** A url is a path and a query (and potentially a slash).
       The type is the concatenation of both types.
   *)
-  type ('f,'r,'c, 'rc) url_ty =
-    | ConvUrl : slash
+  type ('f,'r,'c, 'rc) convurl =
+    | Url : slash
        * ('f, 'x,     'c, 'xc     ) path_ty
        * (    'x, 'r,     'xc, 'rc) query_ty
-      -> ('f,     'r, 'c,      'rc) url_ty
+      -> ('f,     'r, 'c,      'rc) convurl
+
 
 end
+
 
 (** {2 Path part of an url} *)
 module Path : sig
@@ -173,15 +175,15 @@ end
 (** A complete convertible Url. *)
 module Url : sig
 
-  type ('f, 'r, 'c, 'rc) t = ('f, 'r, 'c, 'rc) Types.url_ty
+  type ('f, 'r, 'final, 'c, 'rc) t
 
   type slash = Types.slash = Slash | NoSlash | MaybeSlash
 
   val make :
     ?slash:slash ->
-    ('f, 'x,     'c, 'xc     ) Path.t ->
-    (    'x, 'r,     'xc, 'rc) Query.t ->
-    ('f,     'r, 'c,      'rc) t
+    ('f, 'x,              'c, 'xc     ) Path.t ->
+    (    'x, 'r,              'xc, 'rc) Query.t ->
+    ('f,     'r, [`NotF], 'c,      'rc) t
 
 end
 
@@ -218,38 +220,44 @@ val ( **! ) :
   ('b -> 'f,'r,('a, 'b) Converter.t -> 'c,'rc) Query.t
 
 val (/?) :
-  ('f, 'x,     'c, 'xc     ) Path.t ->
-  (    'x, 'r,     'xc, 'rc) Query.t ->
-  ('f,     'r, 'c,      'rc) Url.t
+  ('f, 'x,              'c, 'xc     ) Path.t ->
+  (    'x, 'r,              'xc, 'rc) Query.t ->
+  ('f,     'r, [`NotF], 'c,      'rc) Url.t
 
 
 val (//?) :
-  ('f, 'x,     'c, 'xc     ) Path.t ->
-  (    'x, 'r,     'xc, 'rc) Query.t ->
-  ('f,     'r, 'c,      'rc) Url.t
+  ('f, 'x,              'c, 'xc     ) Path.t ->
+  (    'x, 'r,              'xc, 'rc) Query.t ->
+  ('f,     'r, [`NotF], 'c,      'rc) Url.t
 
 
 val (/??) :
-  ('f, 'x,     'c, 'xc     ) Path.t ->
-  (    'x, 'r,     'xc, 'rc) Query.t ->
-  ('f,     'r, 'c,      'rc) Url.t
+  ('f, 'x,              'c, 'xc     ) Path.t ->
+  (    'x, 'r,              'xc, 'rc) Query.t ->
+  ('f,     'r, [`NotF], 'c,      'rc) Url.t
 
 
-type ('fu, 'return) t
+(** An url with an empty list of converters.
+    It can be evaluated/extracted/matched against.
+ *)
+type ('f, 'r, 'd, 'rc) t =
+  ('f, 'r, 'd,'rc,'rc) Url.t
+  constraint 'rc = _ Url.t
 
-val finalize : ('f, 'r, 'c, ('f, 'r) t) Url.t -> 'c
+val finalize :
+  ('f, 'r, [`NotF], 'c, ('f, 'r, [`F], _) t) Url.t -> 'c
 
-val keval : ('a, 'b) t -> (Uri.t -> 'b) -> 'a
-val eval : ('a, Uri.t) t -> 'a
+val keval : ('f, 'r, _, _) t -> (Uri.t -> 'r) -> 'f
+val eval : ('f, Uri.t, _, _) t -> 'f
 
-val extract : ('f, 'r) t -> f:'f -> Uri.t -> 'r
+val extract : ('f, 'r, _, _) t -> f:'f -> Uri.t -> 'r
 
-val get_re : ('f, 'r) t -> Re.t
+val get_re : _ t -> Re.t
 
 type 'r route
-val route : ('f, 'r) t -> 'f -> 'r route
+val route : ('f, 'r, _, _) t -> 'f -> 'r route
 
-val (-->) : ('f, 'r) t -> 'f -> 'r route
+val (-->) : ('f, 'r, _, _) t -> 'f -> 'r route
 
 val match_url : default:(Uri.t -> 'r) -> 'r route list -> Uri.t -> 'r
 

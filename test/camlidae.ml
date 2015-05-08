@@ -2,10 +2,10 @@
 let camlidae () = Furl.host "www.camlidae.ml"
 
 let by_name () =
-  Furl.(finalize @@ ~$camlidae / "name" /% String /? nil)
+  Furl.(~$camlidae / "name" /% String /? nil)
 
 let by_humps () =
-  Furl.(finalize @@ ~$camlidae / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
+  Furl.(~$camlidae / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
 
 type camlidae = {
   name : string ;

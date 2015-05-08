@@ -1,21 +1,19 @@
 
 (* www.bla.com/foo/%i/bla/%f?truc=%s *)
-let raw_u () =
+let url () =
   Furl.(
     rel/"foo"/%Int/"bla"/%Float/?("truc", List Int)**("a", String)**nil
   )
-let url () = Furl.(finalize ~$raw_u)
 
 let uri = Furl.(eval ~$url) 3 5. [1;2] "bla"
 
 let () =
   Format.printf "%a\n%!" Uri.pp_hum uri
 
-let raw_u () =
+let url () =
   Furl.(
     rel/"foo"/%Int/%List1 Float//?("foo",Bool)**("bla",String)**any
   )
-let url () = Furl.(finalize ~$raw_u)
 let uri = Furl.(eval ~$url) 3 (4.,[]) true "hello"
 
 let () =

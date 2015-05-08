@@ -11,3 +11,5 @@ let json_converter = Furl.Converter.{
 let my_json_url () =
   Furl.(finalize @@ rel /? ("json", String) **! nil )
     json_converter
+
+let query = Furl.(eval ~$my_json_url)
