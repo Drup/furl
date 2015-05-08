@@ -24,7 +24,7 @@ let camlidae () = Furl.host "www.camlidae.ml"
 We can query a Camelidae by name:
 ```ocaml
 let by_name () =
-  Furl.(finalize @@ ~$camlidae / "name" /% String /? nil)
+  Furl.(~$camlidae / "name" /% String /? nil)
 val by_name : unit -> (string -> 'a, 'a) Furl.furl
 ```
 
@@ -36,14 +36,14 @@ corresponding to the parameters of the url. `'r` is the return type, which could
 We can also query a list of camelidae by humps:
 ```ocaml
 let by_humps () =
-  Furl.(finalize @@ ~$camlidae / "humps" /% Int /? nil)
+  Furl.(~$camlidae / "humps" /% Int /? nil)
 val by_humps : unit -> (int -> 'a, 'a) Furl.furl
 ```
 
 This is nice, but we want to refine the list by humps to only show non extinct camelidaes:
 ```ocaml
 let by_humps () =
-  Furl.(finalize @@ ~$camlidae / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
+  Furl.(~$camlidae / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
 val by_humps : unit -> (int -> bool option -> 'a, 'a) Furl.furl
 ```
 
