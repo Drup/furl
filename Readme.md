@@ -8,9 +8,9 @@ This library allows to create type-safe formatted urls in the spirit of the
 
 **This is work in progress, if you have any remarks or proposition, please open an issue. The API _will_ be changed until I'm happy with it. Contributions are welcome. Also, it may still be buggy.**
 
-For now, it needs [this PR](https://github.com/ocaml/ocaml-re/pull/58). You can pin it with:
+To use this library, you can pin it:
 ```
-opam pin add re https://github.com/Drup/ocaml-re.git#pmarks
+opam pin add furl https://github.com/Drup/furl.git
 ```
 
 ## Quick look
