@@ -394,8 +394,8 @@ let keval_url
     eval_query q cl @@ fun Nil query ->
     k @@
     let path = match slash with
-      | NoSlash -> "" :: path
-      | Slash
+      | Slash -> "" :: path
+      | NoSlash
       | MaybeSlash -> path
     in Uri.make
       ?host
