@@ -29,4 +29,5 @@ depends: [
   "uri"
   "re" {>= "1.4.0"}
   "oasis" {dev & build}
+  "gen"
 ]
