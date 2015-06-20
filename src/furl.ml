@@ -223,6 +223,14 @@ module Url = struct
   let make ?(slash=NoSlash) path query : _ t =
     Convertible(Url (slash, path, query))
 
+  let prefix_path path = function
+    | Convertible (Url (slash, path', query)) ->
+      Convertible (Url (slash, Path.concat path path', query))
+
+  let add_query query = function
+    | Convertible (Url (slash, path, query')) ->
+      Convertible (Url (slash, path, Query.concat query' query))
+
 end
 
 let nil = Query.nil

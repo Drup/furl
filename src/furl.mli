@@ -185,6 +185,18 @@ module Url : sig
     (    'x, 'r,              'xc, 'rc) Query.t ->
     ('f,     'r, [`NotF], 'c,      'rc) t
 
+  (** [prefix_path p r] is the route formed by the concatenation of [p] and [r]. *)
+  val prefix_path :
+    ('a, 'b,                'c, 'd    ) Path.t ->
+    (    'b, 'e, [ `NotF ],     'd, 'f) t ->
+    ('a,     'e, [ `NotF ], 'c,     'f) t
+
+  (** [add_query q r] is the route formed by the concatenation of [r] and [q]. *)
+  val add_query :
+    (    'a, 'b,                'c, 'd) Query.t ->
+    ('e, 'a,     [ `NotF ], 'f, 'c    ) t ->
+    ('e,     'b, [ `NotF ], 'f,     'd) t
+
 end
 
 (** {2 Combinators} *)
