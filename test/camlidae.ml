@@ -2,10 +2,10 @@
 let camlidae () = Furl.host "www.camlidae.ml"
 
 let by_name () =
-  Furl.(~$camlidae / "name" /% String /? nil)
+  Furl.(camlidae() / "name" /% String /? nil)
 
 let by_humps () =
-  Furl.(~$camlidae / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
+  Furl.(camlidae() / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
 
 type camlidae = {
   name : string ;
@@ -33,8 +33,8 @@ let handle_camlidaes =
   Furl.(match_url
       ~default:(fun _uri -> failwith "This is not a camlidae.")
       [
-        ~$by_name  --> handle_by_name ;
-        ~$by_humps --> handle_by_hump ;
+        by_name()  --> handle_by_name ;
+        by_humps() --> handle_by_hump ;
       ])
 
 let query_by_humps = Furl.eval @@ by_humps ()
