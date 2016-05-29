@@ -55,43 +55,41 @@ type ('top,'a) atom =
 *)
 module Types : sig
 
-  type ('fu, 'return, 'converter, 'returnc) path_ty =
-    | Host : string -> ('r, 'r, 'rc, 'rc) path_ty
-    | Rel  : ('r, 'r ,'rc, 'rc) path_ty
+  type ('fu, 'return) path_ty =
+    | Host : string -> ('r, 'r) path_ty
+    | Rel  : ('r, 'r) path_ty
     | PathConst :
-        ('f, 'r, 'c, 'rc) path_ty * string
-     -> ('f, 'r, 'c, 'rc) path_ty
+        ('f, 'r) path_ty * string
+     -> ('f, 'r) path_ty
     | PathAtom :
-        ('f,'a -> 'r, 'c, 'rc) path_ty * ([`Top],'a) atom
-     -> ('f,      'r, 'c, 'rc) path_ty
+        ('f,'a -> 'r) path_ty * ([`Top],'a) atom
+     -> ('f,      'r) path_ty
     | PathConv :
-        ('f, 'b -> 'r, 'c, ('a, 'b) Converter.t -> 'rc) path_ty
-        * ([`Top],'a) atom
-     -> ('f,       'r, 'c,                         'rc) path_ty
+        ('f, 'b -> 'r) path_ty
+        * ([`Top],'a) atom * ('a, 'b) Converter.t
+     -> ('f,       'r) path_ty
 
-  type ('fu, 'return, 'converter, 'returnc) query_ty =
-    | Nil  : ('r,'r, 'rc,'rc) query_ty
-    | Any  : ('r,'r, 'rc,'rc) query_ty
-
+  type ('fu, 'return) query_ty =
+    | Nil  : ('r,'r) query_ty
+    | Any  : ('r,'r) query_ty
     | QueryAtom : string * ([`Top],'a) atom
-        * (      'f, 'r, 'c, 'rc) query_ty
-       -> ('a -> 'f, 'r, 'c, 'rc) query_ty
+        * (      'f, 'r) query_ty
+       -> ('a -> 'f, 'r) query_ty
 
-    | QueryConv : string * ([`Top],'a) atom
-        * (      'f, 'r,                         'c, 'rc) query_ty
-       -> ('b -> 'f, 'r, ('a, 'b) Converter.t -> 'c, 'rc) query_ty
+    | QueryConv : string * ([`Top],'a) atom * ('a, 'b) Converter.t
+        * (      'f, 'r) query_ty
+       -> ('b -> 'f, 'r) query_ty
 
   type slash = Slash | NoSlash | MaybeSlash
 
-  (** A url is a path and a query (and potentially a slash).
+  (** A convertible url is a path and a query (and potentially a slash).
       The type is the concatenation of both types.
   *)
-  type ('f,'r,'c, 'rc) convurl =
+  type ('f,'r) url_ty =
     | Url : slash
-       * ('f, 'x,     'c, 'xc     ) path_ty
-       * (    'x, 'r,     'xc, 'rc) query_ty
-      -> ('f,     'r, 'c,      'rc) convurl
-
+        * ('f, 'x    ) path_ty
+        * (    'x, 'r) query_ty
+       -> ('f,     'r) url_ty
 
 end
 
@@ -99,38 +97,38 @@ end
 (** {2 Path part of an url} *)
 module Path : sig
 
-  type ('fu, 'return, 'converter, 'returnc) t =
-    ('fu, 'return, 'converter, 'returnc) Types.path_ty
+  type ('fu, 'return) t =
+    ('fu, 'return) Types.path_ty
 
-  val host : string -> ('a, 'a, 'b, 'b) t
+  val host : string -> ('a, 'a) t
   (** [host "www.ocaml.org"] ≡ [//www.ocaml.org] *)
 
-  val relative : ('a, 'a, 'b, 'b) t
+  val relative : ('a, 'a) t
   (** [relative] is the start of a relative url. *)
 
   val add :
-    ('f,'r,'c,'rc) t -> string ->
-    ('f,'r,'c,'rc) t
+    ('f,'r) t -> string ->
+    ('f,'r) t
   (** [add path "foo"] ≡ [<path>/foo]. *)
 
   val add_atom :
-    ('f,'a -> 'r,'c,'rc) t -> ([ `Top ], 'a) atom ->
-    ('f,      'r,'c,'rc) t
+    ('f,'a -> 'r) t -> ([ `Top ], 'a) atom ->
+    ('f,      'r) t
   (** [add_atom path atom] ≡ [<path>/<atom>].
       See the documentation of {!atom} for more details.
   *)
 
   val add_conv :
-    ('f,'b -> 'r,'c,('a, 'b) Converter.t -> 'rc) t -> ([ `Top ], 'a) atom ->
-    ('f,      'r,'c,                        'rc) t
+    ('f,'b -> 'r) t -> ([ `Top ], 'a) atom -> ('a, 'b) Converter.t ->
+    ('f,      'r) t
   (** Similar to [add_atom], but also add the atom to the list of converters.
       See the documentation {!finalize} for more details.
   *)
 
   val concat :
-    ('f, 'x,     'c, 'xc     ) t ->
-    (    'x, 'r,     'xc, 'rc) t ->
-    ('f,     'r, 'c,      'rc) t
+    ('f, 'x     ) t ->
+    (    'x, 'r) t ->
+    ('f,     'r) t
     (** [concat p1 p2] ≡ [<p1>/<p2>].
         If [p2] starts by a host name, the host is discarded.
     *)
@@ -139,35 +137,35 @@ end
 
 (** {2 Query part of an url} *)
 module Query : sig
-  type ('fu, 'return, 'converter, 'returnc) t =
-    ('fu, 'return, 'converter, 'returnc) Types.query_ty
+  type ('fu, 'return) t =
+    ('fu, 'return) Types.query_ty
 
-  val nil : ('a, 'a, 'b, 'b) t
+  val nil : ('a, 'a) t
   (** The empty query. *)
 
-  val any : ('a, 'a, 'b, 'b) t
+  val any : ('a, 'a) t
   (** Any query parameter. *)
 
   val add :
     string -> ([ `Top ], 'a) atom ->
-    (      'f,'r,'c,'rc) t ->
-    ('a -> 'f,'r,'c,'rc) t
+    (      'f,'r) t ->
+    ('a -> 'f,'r) t
   (** [add "myparam" atom query] ≡ [myparam=<atom>&<query>].
       See {!atom} documentation for more details.
   *)
 
   val add_conv :
-    string -> ([ `Top ], 'a) atom ->
-    (      'f,'r,                        'c,'rc) t ->
-    ('b -> 'f,'r,('a, 'b) Converter.t -> 'c,'rc) t
+    string -> ([ `Top ], 'a) atom -> ('a, 'b) Converter.t ->
+    (      'f,'r) t ->
+    ('b -> 'f,'r) t
   (** Similar to [add], but also add the atom to the list of converters.
       See the documentation of {!finalize} for more details.
   *)
 
   val concat :
-    ('f, 'x,     'c, 'xc     ) t ->
-    (    'x, 'r,     'xc, 'rc) t ->
-    ('f,     'r, 'c,      'rc) t
+    ('f, 'x    ) t ->
+    (    'x, 'r) t ->
+    ('f,     'r) t
     (** [concat q1 q2] ≡ [<q1>&<q2>]. *)
 
 end
@@ -175,101 +173,96 @@ end
 (** A complete convertible Url. *)
 module Url : sig
 
-  type ('f, 'r, 'final, 'c, 'rc) t
+  type ('f, 'r) t
 
   type slash = Types.slash = Slash | NoSlash | MaybeSlash
 
   val make :
     ?slash:slash ->
-    ('f, 'x,              'c, 'xc     ) Path.t ->
-    (    'x, 'r,              'xc, 'rc) Query.t ->
-    ('f,     'r, [`NotF], 'c,      'rc) t
+    ('f, 'x    ) Path.t ->
+    (    'x, 'r) Query.t ->
+    ('f,     'r) t
 
   (** [prefix_path p r] is the route formed by the concatenation of [p] and [r]. *)
   val prefix_path :
-    ('a, 'b,                'c, 'd    ) Path.t ->
-    (    'b, 'e, [ `NotF ],     'd, 'f) t ->
-    ('a,     'e, [ `NotF ], 'c,     'f) t
+    ('a, 'b    ) Path.t ->
+    (    'b, 'e) t ->
+    ('a,     'e) t
 
   (** [add_query q r] is the route formed by the concatenation of [r] and [q]. *)
   val add_query :
-    (    'a, 'b,                'c, 'd) Query.t ->
-    ('e, 'a,     [ `NotF ], 'f, 'c    ) t ->
-    ('e,     'b, [ `NotF ], 'f,     'd) t
+    (    'a, 'b) Query.t ->
+    ('e, 'a    ) t ->
+    ('e,     'b) t
 
 end
 
 (** {2 Combinators} *)
 
-val rel : ('r, 'r, 'rc, 'rc) Path.t
+val rel : ('r, 'r) Path.t
 
-val host : string -> ('r, 'r, 'rc, 'rc) Path.t
+val host : string -> ('r, 'r) Path.t
 
 val (/) :
-  ('f,'r,'c,'rc) Path.t -> string ->
-  ('f,'r,'c,'rc) Path.t
+  ('f,'r) Path.t -> string ->
+  ('f,'r) Path.t
 
 val (/%) :
-  ('f,'a -> 'r,'c,'rc) Path.t -> ([ `Top ], 'a) atom ->
-  ('f,      'r,'c,'rc) Path.t
+  ('f,'a -> 'r) Path.t -> ([ `Top ], 'a) atom ->
+  ('f,      'r) Path.t
 
 val (/!) :
-  ('f,'b -> 'r,'c,('a, 'b) Converter.t -> 'rc) Path.t -> ([ `Top ], 'a) atom ->
-  ('f,      'r,'c,                        'rc) Path.t
+  ('f,'b -> 'r) Path.t -> (([ `Top ], 'a) atom * ('a, 'b) Converter.t) ->
+  ('f,      'r) Path.t
 
-val nil : ('r, 'r, 'rc, 'rc) Query.t
+val nil : ('r, 'r) Query.t
 
-val any : ('r, 'r, 'rc, 'rc) Query.t
+val any : ('r, 'r) Query.t
 
 val ( ** ) :
   string * ([ `Top ], 'a) atom ->
-  (      'f,'r,'c,'rc) Query.t ->
-  ('a -> 'f,'r,'c,'rc) Query.t
+  (      'f,'r) Query.t ->
+  ('a -> 'f,'r) Query.t
 
 val ( **! ) :
-  string * ([ `Top ], 'a) atom ->
-  (      'f,'r,                        'c,'rc) Query.t ->
-  ('b -> 'f,'r,('a, 'b) Converter.t -> 'c,'rc) Query.t
+  string * ([ `Top ], 'a) atom * ('a, 'b) Converter.t ->
+  (      'f,'r) Query.t ->
+  ('b -> 'f,'r) Query.t
 
 val (/?) :
-  ('f, 'x,              'c, 'xc     ) Path.t ->
-  (    'x, 'r,              'xc, 'rc) Query.t ->
-  ('f,     'r, [`NotF], 'c,      'rc) Url.t
+  ('f, 'x     ) Path.t ->
+  (    'x, 'r) Query.t ->
+  ('f,     'r) Url.t
 
 
 val (//?) :
-  ('f, 'x,              'c, 'xc     ) Path.t ->
-  (    'x, 'r,              'xc, 'rc) Query.t ->
-  ('f,     'r, [`NotF], 'c,      'rc) Url.t
+  ('f, 'x    ) Path.t ->
+  (    'x, 'r) Query.t ->
+  ('f,     'r) Url.t
 
 
 val (/??) :
-  ('f, 'x,              'c, 'xc     ) Path.t ->
-  (    'x, 'r,              'xc, 'rc) Query.t ->
-  ('f,     'r, [`NotF], 'c,      'rc) Url.t
+  ('f, 'x    ) Path.t ->
+  (    'x, 'r) Query.t ->
+  ('f,     'r) Url.t
 
 
 (** An url with an empty list of converters.
     It can be evaluated/extracted/matched against.
  *)
-type ('f, 'r, 'd, 'rc) t =
-  ('f, 'r, 'd,'rc,'rc) Url.t
-  constraint 'rc = _ Url.t
+type ('f, 'r) t = ('f, 'r) Url.t
 
-val finalize :
-  ('f, 'r, [`NotF], 'c, ('f, 'r, [`F], _) t) Url.t -> 'c
+val keval : ('f, 'r) t -> (Uri.t -> 'r) -> 'f
+val eval : ('f, Uri.t) t -> 'f
 
-val keval : ('f, 'r, _, _) t -> (Uri.t -> 'r) -> 'f
-val eval : ('f, Uri.t, _, _) t -> 'f
-
-val extract : ('f, 'r, _, _) t -> f:'f -> Uri.t -> 'r
+val extract : ('f, 'r) t -> f:'f -> Uri.t -> 'r
 
 val get_re : _ t -> Re.t
 
 type 'r route
-val route : ('f, 'r, _, _) t -> 'f -> 'r route
+val route : ('f, 'r) t -> 'f -> 'r route
 
-val (-->) : ('f, 'r, _, _) t -> 'f -> 'r route
+val (-->) : ('f, 'r) t -> 'f -> 'r route
 
 val match_url : default:(Uri.t -> 'r) -> 'r route list -> Uri.t -> 'r
 
