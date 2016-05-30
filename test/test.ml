@@ -1,8 +1,11 @@
+open Tyre
+
+let string = regex Re.(rep1 @@ compl [char ','])
 
 (* www.bla.com/foo/%i/bla/%f?truc=%s *)
 let url () =
   Furl.(
-    rel/"foo"/%Int/"bla"/%Float/?("truc", List Int)**("a", String)**nil
+    rel/"foo"/%int/"bla"/%float/?("truc", list int)**("a", string)**nil
   )
 
 let uri = Furl.(eval ~$url) 3 5. [1;2] "bla"
@@ -12,7 +15,7 @@ let () =
 
 let url () =
   Furl.(
-    rel/"foo"/%Int/%List1 Float//?("foo",Bool)**("bla",String)**any
+    rel/"foo"/%int/% (float <*> list float) //?("foo",bool)**("bla",string)**any
   )
 let uri = Furl.(eval ~$url) 3 (4.,[]) true "hello"
 

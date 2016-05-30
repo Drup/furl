@@ -1,11 +1,14 @@
+open Tyre
+
+let string = regex Re.(rep1 @@ compl [char '/'])
 
 let camlidae () = Furl.host "www.camlidae.ml"
 
 let by_name () =
-  Furl.(camlidae() / "name" /% String /? nil)
+  Furl.(camlidae() / "name" /% string /? nil)
 
 let by_humps () =
-  Furl.(camlidae() / "humps" /% Int /? ("extinct",Opt Bool) ** nil)
+  Furl.(camlidae() / "humps" /% int /? ("extinct",opt bool) ** nil)
 
 type camlidae = {
   name : string ;

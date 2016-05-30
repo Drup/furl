@@ -7,17 +7,6 @@
    This can be used both for client and servers.
 *)
 
-(** Bidirectional converters from one type to another. *)
-module Converter : sig
-  type ('a, 'b) t = {
-    of_ : 'b -> 'a;
-    to_ : 'a -> 'b
-  }
-
-  val id : ('a, 'a) t
-
-end
-
 (** An atom is an individual part of a path or a query.
     It represents a "hole" in the url.
 
@@ -32,22 +21,7 @@ end
 
     To encode more complex datatypes, see the documentation of {!finalize}.
 *)
-type ('top,'a) atom =
-  | Float  : (_, float) atom
-  | Int    : (_, int) atom
-  | Bool   : (_, bool) atom
-  | String : (_, string) atom
-  | Regexp : Re.t -> (_, string) atom
-  | Opt    : ([`Notop], 'a) atom -> (_, 'a option) atom
-  | Alt    :
-      ([`Notop], 'a) atom * ([`Notop],'b) atom
-    -> (_, [`Left of 'a | `Right of 'b]) atom
-  | Seq    : ([`Notop], 'a) atom * ([`Notop], 'b) atom -> (_, 'a * 'b) atom
-  | Prefix : string * ([`Notop], 'a) atom -> (_, 'a) atom
-  | Suffix : ([`Notop], 'a) atom * string -> (_, 'a) atom
-  | List   : ([`Notop], 'a) atom -> ([`Top], 'a list) atom
-  | List1  : ([`Notop], 'a) atom -> ([`Top], 'a * 'a list) atom
-
+type 'a atom = 'a Tyre.t
 
 (** Internal Types
 
@@ -62,23 +36,15 @@ module Types : sig
         ('f, 'r) path_ty * string
      -> ('f, 'r) path_ty
     | PathAtom :
-        ('f,'a -> 'r) path_ty * ([`Top],'a) atom
+        ('f,'a -> 'r) path_ty * 'a Tyre.t
      -> ('f,      'r) path_ty
-    | PathConv :
-        ('f, 'b -> 'r) path_ty
-        * ([`Top],'a) atom * ('a, 'b) Converter.t
-     -> ('f,       'r) path_ty
 
   type ('fu, 'return) query_ty =
     | Nil  : ('r,'r) query_ty
     | Any  : ('r,'r) query_ty
-    | QueryAtom : string * ([`Top],'a) atom
+    | QueryAtom : string * 'a Tyre.t
         * (      'f, 'r) query_ty
        -> ('a -> 'f, 'r) query_ty
-
-    | QueryConv : string * ([`Top],'a) atom * ('a, 'b) Converter.t
-        * (      'f, 'r) query_ty
-       -> ('b -> 'f, 'r) query_ty
 
   type slash = Slash | NoSlash | MaybeSlash
 
@@ -112,17 +78,10 @@ module Path : sig
   (** [add path "foo"] ≡ [<path>/foo]. *)
 
   val add_atom :
-    ('f,'a -> 'r) t -> ([ `Top ], 'a) atom ->
+    ('f,'a -> 'r) t -> 'a Tyre.t ->
     ('f,      'r) t
   (** [add_atom path atom] ≡ [<path>/<atom>].
       See the documentation of {!atom} for more details.
-  *)
-
-  val add_conv :
-    ('f,'b -> 'r) t -> ([ `Top ], 'a) atom -> ('a, 'b) Converter.t ->
-    ('f,      'r) t
-  (** Similar to [add_atom], but also add the atom to the list of converters.
-      See the documentation {!finalize} for more details.
   *)
 
   val concat :
@@ -147,19 +106,11 @@ module Query : sig
   (** Any query parameter. *)
 
   val add :
-    string -> ([ `Top ], 'a) atom ->
+    string -> 'a Tyre.t ->
     (      'f,'r) t ->
     ('a -> 'f,'r) t
   (** [add "myparam" atom query] ≡ [myparam=<atom>&<query>].
       See {!atom} documentation for more details.
-  *)
-
-  val add_conv :
-    string -> ([ `Top ], 'a) atom -> ('a, 'b) Converter.t ->
-    (      'f,'r) t ->
-    ('b -> 'f,'r) t
-  (** Similar to [add], but also add the atom to the list of converters.
-      See the documentation of {!finalize} for more details.
   *)
 
   val concat :
@@ -208,11 +159,7 @@ val (/) :
   ('f,'r) Path.t
 
 val (/%) :
-  ('f,'a -> 'r) Path.t -> ([ `Top ], 'a) atom ->
-  ('f,      'r) Path.t
-
-val (/!) :
-  ('f,'b -> 'r) Path.t -> (([ `Top ], 'a) atom * ('a, 'b) Converter.t) ->
+  ('f,'a -> 'r) Path.t -> 'a Tyre.t ->
   ('f,      'r) Path.t
 
 val nil : ('r, 'r) Query.t
@@ -220,14 +167,9 @@ val nil : ('r, 'r) Query.t
 val any : ('r, 'r) Query.t
 
 val ( ** ) :
-  string * ([ `Top ], 'a) atom ->
+  string * 'a Tyre.t ->
   (      'f,'r) Query.t ->
   ('a -> 'f,'r) Query.t
-
-val ( **! ) :
-  string * ([ `Top ], 'a) atom * ('a, 'b) Converter.t ->
-  (      'f,'r) Query.t ->
-  ('b -> 'f,'r) Query.t
 
 val (/?) :
   ('f, 'x     ) Path.t ->
