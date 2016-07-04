@@ -10,16 +10,12 @@
 (** An atom is an individual part of a path or a query.
     It represents a "hole" in the url.
 
-    For example [Opt Int] is a hole of type [int option].
+    An atom can be any regular expression encoded using {!Tyre}.
+    For example [Tyre.(opt int)] is a hole of type [int option].
 
-    Lists cannot only be at "toplevel" in an atom.
-    This is enforced by the type variable [`top].
-
-    List are treated specially:
-    - [List Int] in a path correspond to 4/5/6
-    - [List Int] in a query correspond to 4,5,6
-
-    To encode more complex datatypes, see the documentation of {!finalize}.
+    Repetition at toplevel of an atom is treated specially:
+    - [Tyre.(list int)] in a path correspond to 4/5/6
+    - [Tyre.(list int)] in a query correspond to 4,5,6
 *)
 type 'a atom = 'a Tyre.t
 
@@ -29,33 +25,33 @@ type 'a atom = 'a Tyre.t
 *)
 module Types : sig
 
-  type ('fu, 'return) path_ty =
-    | Host : string -> ('r, 'r) path_ty
-    | Rel  : ('r, 'r) path_ty
+  type ('fu, 'return) path =
+    | Host : string -> ('r, 'r) path
+    | Rel  : ('r, 'r) path
     | PathConst :
-        ('f, 'r) path_ty * string
-     -> ('f, 'r) path_ty
+        ('f, 'r) path * string
+     -> ('f, 'r) path
     | PathAtom :
-        ('f,'a -> 'r) path_ty * 'a Tyre.t
-     -> ('f,      'r) path_ty
+        ('f,'a -> 'r) path * 'a Tyre.t
+     -> ('f,      'r) path
 
-  type ('fu, 'return) query_ty =
-    | Nil  : ('r,'r) query_ty
-    | Any  : ('r,'r) query_ty
+  type ('fu, 'return) query =
+    | Nil  : ('r,'r) query
+    | Any  : ('r,'r) query
     | QueryAtom : string * 'a Tyre.t
-        * (      'f, 'r) query_ty
-       -> ('a -> 'f, 'r) query_ty
+        * (      'f, 'r) query
+       -> ('a -> 'f, 'r) query
 
   type slash = Slash | NoSlash | MaybeSlash
 
   (** A convertible url is a path and a query (and potentially a slash).
       The type is the concatenation of both types.
   *)
-  type ('f,'r) url_ty =
+  type ('f,'r) url =
     | Url : slash
-        * ('f, 'x    ) path_ty
-        * (    'x, 'r) query_ty
-       -> ('f,     'r) url_ty
+        * ('f, 'x    ) path
+        * (    'x, 'r) query
+       -> ('f,     'r) url
 
 end
 
@@ -64,7 +60,7 @@ end
 module Path : sig
 
   type ('fu, 'return) t =
-    ('fu, 'return) Types.path_ty
+    ('fu, 'return) Types.path
 
   val host : string -> ('a, 'a) t
   (** [host "www.ocaml.org"] ≡ [//www.ocaml.org] *)
@@ -97,7 +93,7 @@ end
 (** {2 Query part of an url} *)
 module Query : sig
   type ('fu, 'return) t =
-    ('fu, 'return) Types.query_ty
+    ('fu, 'return) Types.query
 
   val nil : ('a, 'a) t
   (** The empty query. *)
@@ -121,10 +117,10 @@ module Query : sig
 
 end
 
-(** A complete convertible Url. *)
+(** A complete url. *)
 module Url : sig
 
-  type ('f, 'r) t
+  type ('f, 'r) t = ('f, 'r) Types.url
 
   type slash = Types.slash = Slash | NoSlash | MaybeSlash
 

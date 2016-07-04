@@ -34,33 +34,33 @@ module Types = struct
   (*   | PathConst : string -> ('r, 'r) atom *)
   (*   | Path : 'a Tyre.t -> ('r, 'r -> 'a) atom *)
 
-  type ('fu, 'return) path_ty =
-    | Host : string -> ('r, 'r) path_ty
-    | Rel  : ('r, 'r) path_ty
+  type ('fu, 'return) path =
+    | Host : string -> ('r, 'r) path
+    | Rel  : ('r, 'r) path
     | PathConst :
-        ('f, 'r) path_ty * string
-     -> ('f, 'r) path_ty
+        ('f, 'r) path * string
+     -> ('f, 'r) path
     | PathAtom :
-        ('f,'a -> 'r) path_ty * 'a atom
-     -> ('f,      'r) path_ty
+        ('f,'a -> 'r) path * 'a atom
+     -> ('f,      'r) path
 
-  type ('fu, 'return) query_ty =
-    | Nil  : ('r,'r) query_ty
-    | Any  : ('r,'r) query_ty
+  type ('fu, 'return) query =
+    | Nil  : ('r,'r) query
+    | Any  : ('r,'r) query
     | QueryAtom : string * 'a atom
-        * (      'f, 'r) query_ty
-       -> ('a -> 'f, 'r) query_ty
+        * (      'f, 'r) query
+       -> ('a -> 'f, 'r) query
 
   type slash = Slash | NoSlash | MaybeSlash
 
   (** A convertible url is a path and a query (and potentially a slash).
       The type is the concatenation of both types.
   *)
-  type ('f,'r) url_ty =
+  type ('f,'r) url =
     | Url : slash
-        * ('f, 'x    ) path_ty
-        * (    'x, 'r) query_ty
-       -> ('f,     'r) url_ty
+        * ('f, 'x    ) path
+        * (    'x, 'r) query
+       -> ('f,     'r) url
 
 
 end
@@ -75,7 +75,7 @@ open Types
 
 module Path = struct
 
-  type ('f,'r) t = ('f,'r) Types.path_ty
+  type ('f,'r) t = ('f,'r) Types.path
 
   let host s = Host s
   let relative = Rel
@@ -98,7 +98,7 @@ end
 
 module Query = struct
 
-  type ('f,'r) t = ('f,'r) Types.query_ty
+  type ('f,'r) t = ('f,'r) Types.query
 
   let nil : _ t = Nil
   let any  = Any
@@ -126,7 +126,7 @@ end
 
 module Url = struct
 
-  type ('f,'r) t = ('f,'r) url_ty
+  type ('f,'r) t = ('f,'r) url
 
   type slash = Types.slash = Slash | NoSlash | MaybeSlash
 
@@ -210,7 +210,7 @@ let rec eval_query
         k ((n, eval_top_atom (from_t a) x) :: r)
 
 let keval
-  : ('a, 'b) url_ty -> (Uri.t -> 'b) -> 'a
+  : ('a, 'b) url -> (Uri.t -> 'b) -> 'a
   = fun (Url(slash,p,q)) k ->
     eval_path p @@ fun host path ->
     eval_query q @@ fun query ->
