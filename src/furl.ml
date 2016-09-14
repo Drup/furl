@@ -411,39 +411,42 @@ let extract_atom = extract
 *)
 let rec extract_path
   : type f x r.
+    original:string ->
     (f,x) re_path ->
     Re.substrings ->
     (x -> r) ->
       (f -> r)
-  = fun wp subs k -> match wp with
+  = fun ~original wp subs k -> match wp with
     | Start  -> k
     | PathAtom (rep, idx, rea) ->
-      let _, v = extract_atom rea idx subs in
+      let _, v = extract_atom ~original rea idx subs in
       let k f = k (f v) in
-      extract_path rep subs k
+      extract_path ~original rep subs k
 
 (** Query are in the right order, we can proceed in direct style. *)
 let rec extract_query
   : type x r.
+    original:string ->
     (x,r) re_query ->
     int -> Re.substrings -> int array ->
     x -> r
-  = fun wq i subs permutation f -> match wq with
+  = fun ~original wq i subs permutation f -> match wq with
     | Nil  -> f
     | Any  -> f
     | Cons (rea,req) ->
       let subs_idx = permutation.(i) in
-      let _, v = extract_atom rea subs_idx subs in
-      extract_query req (i+1) subs permutation (f v)
+      let _, v = extract_atom ~original rea subs_idx subs in
+      extract_query ~original req (i+1) subs permutation (f v)
 
 
 let extract_url
   : type r f.
+    original:string ->
     (f, r) re_url ->
     Re.substrings -> f -> r
-  = fun (ReUrl (wp, wq, permutation)) subs f ->
-    let k = extract_query wq 0 subs permutation in
-    let r = extract_path wp subs k f in
+  = fun ~original (ReUrl (wp, wq, permutation)) subs f ->
+    let k = extract_query ~original wq 0 subs permutation in
+    let r = extract_path ~original wp subs k f in
     r
 
 let prepare_uri uri =
@@ -459,7 +462,7 @@ let extract url =
   fun ~f uri ->
     let s = prepare_uri uri in
     let subs = Re.exec re s in
-    extract_url re_url subs f
+    extract_url ~original:s re_url subs f
 
 (** {4 Multiple match} *)
 
@@ -485,14 +488,14 @@ let rec build_info_list = function
     re::rel, ReEx (f, id, re_url)::wl
 
 let rec find_and_trigger
-  : type r. Re.substrings -> r re_ex list -> r
-  = fun subs -> function
+  : type r. original:string -> Re.substrings -> r re_ex list -> r
+  = fun ~original subs -> function
     | [] ->
       (* Invariant: At least one of the regexp of the alternative matches. *)
       assert false
     | ReEx (f, id, re_url) :: l ->
-      if Re.marked subs id then extract_url re_url subs f
-      else find_and_trigger subs l
+      if Re.marked subs id then extract_url ~original re_url subs f
+      else find_and_trigger ~original subs l
 
 let match_url
   : type r.
@@ -504,6 +507,6 @@ let match_url
       let s = prepare_uri uri in
       try
         let subs = Re.exec re s in
-        find_and_trigger subs wl
+        find_and_trigger ~original:s subs wl
       with
           Not_found -> default uri
