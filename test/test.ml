@@ -15,7 +15,7 @@ let () =
 
 let url () =
   Furl.(
-    rel/"foo"/%int/% (float <*> list float) //?("foo",bool)**("bla",string)**any
+    rel/"foo"/%int/% (float <&> list float) //?("foo",bool)**("bla",string)**any
   )
 let uri = Furl.(eval ~$url) 3 (4.,[]) true "hello"
 
