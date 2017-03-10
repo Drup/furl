@@ -5,7 +5,7 @@ let string = regex Re.(rep1 @@ compl [char ','])
 (* www.bla.com/foo/%i/bla/%f?truc=%s *)
 let url () =
   Furl.(
-    rel/"foo"/%int/"bla"/%float/?("truc", list int)**("a", string)**nil
+    rel/"foo"/%int/"bla"/%float/?("truc", list int)/?("a", string)
   )
 
 let uri = Furl.(eval ~$url) 3 5. [1;2] "bla"
@@ -15,21 +15,21 @@ let () =
 
 let url () =
   Furl.(
-    rel/"foo"/%int/% (float <*> list float) //?("foo",bool)**("bla",string)**any
+    rel/"foo"/%int/% list float /?("foo",bool)/?("bla",string)
   )
-let uri = Furl.(eval ~$url) 3 (4.,[]) true "hello"
+let uri = Furl.(eval ~$url) 3 [5.;6.] true "hello"
 
 let () =
   Format.printf "%a\n%!" Uri.pp_hum uri ;
 
   Furl.(extract ~$url)
     (Uri.of_string "/foo/3/4./?foo=false&athing&bla=x")
-    ~f:(fun i (f,fl) b s ->
+    ~f:(fun i fl b s ->
       Format.printf "%d (%a) %s %b"
         i
         (Format.pp_print_list
            ~pp_sep:(fun fmt () -> Format.pp_print_string fmt ", ")
-           Format.pp_print_float) (f::fl)
+           Format.pp_print_float) fl
         s
         b
     )

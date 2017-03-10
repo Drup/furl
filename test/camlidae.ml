@@ -5,10 +5,10 @@ let string = regex Re.(rep1 @@ compl [char '/'])
 let camlidae () = Furl.host "www.camlidae.ml"
 
 let by_name () =
-  Furl.(camlidae() / "name" /% string /? nil)
+  Furl.(camlidae() / "name" /% string)
 
 let by_humps () =
-  Furl.(camlidae() / "humps" /% int /? ("extinct",opt bool) ** nil)
+  Furl.(camlidae() / "humps" /% int /? ("extinct",opt bool))
 
 type camlidae = {
   name : string ;

@@ -34,8 +34,6 @@ let list ?m ~component n re =
       else
         seq [re ; repn (seq [comma; re]) (n-1) m]
 
-let query_sep ~any =
-  if not any then amper
-  else
-    let open Re in
-    seq [amper; rep @@ seq [rep1 @@ compl [amper] ; amper]]
+let query_sep =
+  let open Re in
+  seq [amper; rep @@ seq [rep1 @@ compl [amper] ; amper]]

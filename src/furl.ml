@@ -1,4 +1,5 @@
 open Furl_utils
+module SMap = Map.Make(String)
 
 (**
    {2 Meta-variables}
@@ -17,7 +18,6 @@ open Furl_utils
    - a is for atom
    - p is for path
    - q is for query
-   - cl is for converter list
    - w is for witness (see section matching)
    - k is for kontinuation (with a k).
 
@@ -30,38 +30,18 @@ type 'a atom = 'a Tyre.t
 
 module Types = struct
 
-  (* type ('f, 'r) atom = *)
-  (*   | PathConst : string -> ('r, 'r) atom *)
-  (*   | Path : 'a Tyre.t -> ('r, 'r -> 'a) atom *)
-
-  type ('fu, 'return) path =
-    | Host : string -> ('r, 'r) path
-    | Rel  : ('r, 'r) path
+  type ('fu, 'return) url =
+    | Host : string -> ('r, 'r) url
+    | Rel  : ('r, 'r) url
     | PathConst :
-        ('f, 'r) path * string
-     -> ('f, 'r) path
+        ('f, 'r) url * string
+     -> ('f, 'r) url
     | PathAtom :
-        ('f,'a -> 'r) path * 'a atom
-     -> ('f,      'r) path
-
-  type ('fu, 'return) query =
-    | Nil  : ('r,'r) query
-    | Any  : ('r,'r) query
-    | QueryAtom : string * 'a atom
-        * (      'f, 'r) query
-       -> ('a -> 'f, 'r) query
-
-  type slash = Slash | NoSlash | MaybeSlash
-
-  (** A convertible url is a path and a query (and potentially a slash).
-      The type is the concatenation of both types.
-  *)
-  type ('f,'r) url =
-    | Url : slash
-        * ('f, 'x    ) path
-        * (    'x, 'r) query
-       -> ('f,     'r) url
-
+        ('f,'a -> 'r) url * 'a atom
+     -> ('f,      'r) url
+    | QueryAtom :
+        ('f, 'a -> 'r) url * string * 'a atom
+     -> ('f,       'r) url
 
 end
 
@@ -71,100 +51,33 @@ end
 open Tyre.Internal
 open Types
 
-(** {2 Combinators} *)
+type ('f,'r) t = ('f,'r) url
 
-module Path = struct
+let host s = Host s
+let rel = Rel
 
-  type ('f,'r) t = ('f,'r) Types.path
+let add u b = PathConst(u,b)
+let add_atom u b = PathAtom(u,b)
+let add_query u (s,b) = QueryAtom(u,s,b)
 
-  let host s = Host s
-  let relative = Rel
+let (/)  = add
+let (/%) = add_atom
+let (/?) = add_query
 
-  let add path b = PathConst(path,b)
-  let add_atom path b = PathAtom(path,b)
-
-  let rec concat
-    : type f r x.
-      (f,x  ) t ->
-      (  x,r) t ->
-      (f,  r) t
-    = fun p1 p2 -> match p2 with
-      | Host _ -> p1
-      | Rel  -> p1
-      | PathConst (p,s) -> PathConst(concat p1 p, s)
-      | PathAtom (p,a) -> PathAtom(concat p1 p, a)
-
-end
-
-module Query = struct
-
-  type ('f,'r) t = ('f,'r) Types.query
-
-  let nil : _ t = Nil
-  let any  = Any
-
-  let add n x query = QueryAtom (n,x,query)
-
-  let rec make_any
-    : type f r . (f,r) t -> (f,r) t
-    = function
-      | Nil -> Any
-      | Any -> Any
-      | QueryAtom (n,x,q) -> QueryAtom(n,x,make_any q)
-
-  let rec concat
-    : type f r x.
-      (f,x  ) t ->
-      (  x,r) t ->
-      (f,  r) t
-    = fun q1 q2 -> match q1 with
-      | Nil  -> q2
-      | Any  -> make_any q2
-      | QueryAtom (n,x,q) -> QueryAtom (n,x, concat q q2)
-
-end
-
-module Url = struct
-
-  type ('f,'r) t = ('f,'r) url
-
-  type slash = Types.slash = Slash | NoSlash | MaybeSlash
-
-  let make ?(slash=NoSlash) path query : _ t =
-    Url (slash, path, query)
-
-  let prefix_path path = function
-    | Url (slash, path', query) ->
-      Url (slash, Path.concat path path', query)
-
-  let add_query query = function
-    | Url (slash, path, query') ->
-      Url (slash, path, Query.concat query' query)
-
-end
-
-let nil = Query.nil
-let any = Query.any
-let ( ** )  (n,x) q = Query.add n x q
-
-let host = Path.host
-let rel  = Path.relative
-let (/)  = Path.add
-let (/%) = Path.add_atom
-
-let (/?) path query  = Url.make ~slash:NoSlash path query
-let (//?) path query = Url.make ~slash:Slash path query
-let (/??) path query = Url.make ~slash:MaybeSlash path query
+let rec concat
+  : type f r x.
+    (f,x  ) t ->
+    (  x,r) t ->
+    (f,  r) t
+  = fun u1 u2 -> match u2 with
+    | Host _ -> u1
+    | Rel  -> u1
+    | PathConst (u,s) -> PathConst(concat u1 u, s)
+    | PathAtom (u,a) -> PathAtom(concat u1 u, a)
+    | QueryAtom (u, s, a) -> QueryAtom(concat u1 u, s, a)
 
 let (~$) f = f ()
 
-(** {2 Finalization} *)
-
-
-(** An url with an empty list of converters.
-    It can be evaluated/extracted/matched against.
- *)
-type ('f, 'r) t = ('f, 'r) Url.t
 
 
 (** {2 Evaluation functions} *)
@@ -176,53 +89,43 @@ type ('f, 'r) t = ('f, 'r) Url.t
 
 let eval_atom p x = Tyre.(eval (Internal.to_t p) x)
 
-let eval_top_atom : type a. a raw -> a -> string list
+let rec eval_top_atom : type a. a raw -> a -> string list
   = function
   | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
   | Rep p ->
     fun l -> Gen.to_list @@ Gen.map (eval_atom p) l
+  | Conv (_s, p, conv) ->
+    fun x -> eval_top_atom p (conv.from_ x)
+  | Mod (_,p) -> eval_top_atom p
   | e -> fun x -> [eval_atom e x]
 
-let rec eval_path
+let rec eval_raw
   : type r f.
-    (f,r) Path.t ->
-    (string option -> string list -> r) ->
+    (f,r) t ->
+    (string option -> string list -> (string * string list) list -> r) ->
     f
   = fun p k -> match p with
-    | Host s -> k (Some s) []
-    | Rel -> k None []
+    | Host s -> k (Some s) [] []
+    | Rel -> k None [] []
     | PathConst (p, s) ->
-      eval_path p @@ fun h r -> k h (s :: r)
+      eval_raw p @@ fun h p' q' -> k h (s :: p') q'
     | PathAtom (p, a) ->
-      eval_path p @@ fun h r x ->
-      k h (eval_top_atom (from_t a) x @ r)
-
-let rec eval_query
-  : type r f.
-    (f,r) Query.t ->
-    ((string * string list) list -> r) ->
-    f
-  = fun q k -> match q with
-    | Nil -> k []
-    | Any -> k []
-    | QueryAtom (n,a,q) ->
-      fun x -> eval_query q @@ fun r ->
-        k ((n, eval_top_atom (from_t a) x) :: r)
+      eval_raw p @@ fun h p' q' x ->
+      k h (eval_top_atom (from_t a) x @ p') q'
+    | QueryAtom (p, s, a) ->
+      eval_raw p @@ fun h p' q' x ->
+      k h p' ((s, eval_top_atom (from_t a) x) :: q')
 
 let keval
   : ('a, 'b) url -> (Uri.t -> 'b) -> 'a
-  = fun (Url(slash,p,q)) k ->
-    eval_path p @@ fun host path ->
-    eval_query q @@ fun query ->
-    k @@
-    let path = match slash with
-      | Slash -> "" :: path
-      | NoSlash
-      | MaybeSlash -> path
-    in Uri.make
-      ?host
-      ~path:(String.concat "/" @@ List.rev path)
-      ~query ()
+  = fun u k ->
+    let k host path query =
+      k @@ Uri.make
+        ?host
+        ~path:(String.concat "/" @@ List.rev path)
+        ~query ()
+    in
+    eval_raw u k
 
 let eval url = keval url (fun x -> x)
 
@@ -266,8 +169,8 @@ let sort_query l =
   List.sort (fun (x,_) (y,_) -> compare (x: string) y) l
 
 type 'a re_atom = 'a Tyre.Internal.wit
-
 let re_atom re = Tyre.Internal.build re
+
 (** Top level atoms are specialized for path and query, see documentation. *)
 
 let re_atom_path
@@ -300,154 +203,125 @@ let re_atom_query
     | e -> re_atom e
 
 
-type (_,_) re_path =
-  | Start : ('r,'r) re_path
-  | PathAtom :
-       ('f, 'a -> 'r) re_path * int * 'a re_atom
-    -> ('f,       'r) re_path
+type (_,_) wit =
+  | Start : ('r,'r) wit
+  | Atom :
+       ('f, 'a -> 'r) wit * int * 'a re_atom
+    -> ('f,       'r) wit
+  | Query :
+       ('f, 'a -> 'r) wit * string * 'a re_atom
+    -> ('f,       'r) wit
 
-let rec re_path
+type ('f,'r) info = {
+  wit : ('f, 'r) wit ;
+  query_indices : int SMap.t ;
+  re : Re.t ;
+}
+
+(* Return:
+   - The number of groups
+   - The witness
+   - A list of regular expression for each path segments in reverse order
+   - A map of query parameters to regular expressions
+*)
+let rec make_witness
   : type r f .
-    (f, r) Path.t ->
-    int * (f, r) re_path * Re.t list
+    (f, r) t ->
+    int * (f, r) wit * Re.t list * (Re.t * int) SMap.t
   = let open Re in function
     | Host s ->
       let re = Re.str @@ Uri.pct_encode ~component:`Host s in
-      1, Start, [re]
-    | Rel    -> 1, Start, []
+      1, Start, [re], SMap.empty
+    | Rel    -> 1, Start, [], SMap.empty
     | PathConst (p,s) ->
-      let (grps, p, re) = re_path p in
+      let grps, p, re, qmap = make_witness p in
       grps, p,
-      str s :: Furl_re.slash :: re
+      str s :: Furl_re.slash :: re,
+      qmap
     | PathAtom (p,a) ->
       let grps, wa, ra = re_atom_path @@ from_t a in
-      let (path_grps, wp, rp) = re_path p in
+      let path_grps, wp, rp, qmap = make_witness p in
       grps + path_grps,
-      PathAtom (wp, path_grps, wa),
-      ra :: rp
-
-
-type ('fu,'ret) re_query =
-  | Nil  : ('r,'r) re_query
-  | Any  : ('r,'r) re_query
-  | Cons :
-      'a re_atom * ('f,'r) re_query
-    -> ('a -> 'f,'r) re_query
-
-let rec re_query
-  : type r f .
-    (f, r) Query.t ->
-    (f, r) re_query * bool * (string * (Re.t * int)) list
-  = function
-    | Nil -> Nil, false, []
-    | Any -> Any, true,  []
-    | QueryAtom (s,a,q) ->
-      let grps, wa, ra = re_atom_query @@ from_t a in
-      let wq, b_any, rq = re_query q in
-      Cons (wa, wq), b_any, (s, (ra, grps)) :: rq
-
-
-type ('f,'r) re_url =
-  | ReUrl :
-       ('f, 'x    ) re_path
-     * (    'x, 'r) re_query * int array
-    -> ('f,     'r) re_url
+      Atom (wp, path_grps, wa),
+      ra :: rp,
+      qmap
+    | QueryAtom (p, s, a) ->
+      let grps_a, wa, ra = re_atom_query @@ from_t a in
+      let grps, wp, rp, qmap = make_witness p in
+      grps,
+      Query (wp, s, wa),
+      rp,
+      (SMap.add s (ra, grps_a) qmap)
 
 let re_url
-  : type f r. (f,r) Url.t -> (f,r) re_url * Re.t
-  = function Url(slash,p,q) ->
-    let end_path = match slash with
-      | NoSlash -> Re.epsilon
-      | Slash -> Re.char '/'
-      | MaybeSlash -> Re.(opt @@ char '/')
-    in
-    let path_grps, wp, rp = re_path p in
-    match q with
-      | Nil ->
-        ReUrl (wp, Nil, [||]),
-        Re.seq @@ List.rev (end_path :: rp)
-
-      | Any ->
-        let end_re = Re.(opt @@ seq [Re.char '?' ; rep any]) in
-        ReUrl (wp, Nil, [||]),
+  : type f r. (f,r) t -> (f,r) info
+  = function url ->
+    let path_grps, wit, rp, qmap = make_witness url in
+    let end_path = Re.char '/' in
+    if SMap.is_empty qmap then
+      let re =
+        let params = Re.(opt @@ seq [Re.char '?' ; rep any]) in
+        let end_re = Re.(opt @@ seq [end_path; params]) in
         Re.seq @@ List.rev_append rp [end_path; end_re]
-
-      | _ ->
-        let (wq, any_query, rql) = re_query q in
-        let rel = sort_query rql in
-        let t =
-          build_permutation path_grps (fun (_,(_,i)) -> i) rql rel
-        in
-
-        let query_sep = Furl_re.query_sep any_query in
-        let add_around_query =
-          if not any_query then fun x -> x
-          else fun l -> Re.(rep any) :: l
-        in
-
-        let re =
+      in
+      { wit ; re ; query_indices = SMap.empty }
+    else
+      let rql = SMap.bindings qmap in
+      let rel = sort_query rql in
+      let query_indices, _ =
+        List.fold_left
+          (fun (m, offset) (name, (_, size)) ->
+             (SMap.add name offset m), offset+size
+          )
+          (SMap.empty, path_grps)
           rel
-          |> List.fold_left (fun l (s,(re,_)) ->
-            Re.seq [Re.str (s ^ "=") ; re ] :: l
-          ) []
-          |> intersperse query_sep
-          |> add_around_query
-          |> List.rev
-          |> add_around_query
-        in
-        ReUrl(wp,wq,t),
-        Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
+      in
 
-let get_re url = snd @@ re_url url
+      let add_around_query l = Re.(rep any) :: l in
+      let re =
+        rel
+        |> List.fold_left (fun l (s,(re,_)) ->
+          Re.seq [Re.str (s ^ "=") ; re ] :: l
+        ) []
+        |> intersperse Furl_re.query_sep
+        |> add_around_query
+        |> List.rev
+        |> add_around_query
+      in
+      let re =
+        Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
+      in
+      { wit ; re ; query_indices }
 
 (** {3 Extraction.} *)
 
 (** Extracting atom is just a matter of following the witness.
     We just need to take care of counting where we are in the matching groups.
 *)
-let extract_atom = extract
+let extract_atom = Tyre.Internal.extract
 
 (** Since path is in reversed order, we proceed by continuation.
 *)
-let rec extract_path
-  : type f x r.
+let rec extract_url
+  : type f x r f' x'.
     original:string ->
-    (f,x) re_path ->
-    Re.substrings ->
-    (x -> r) ->
-      (f -> r)
-  = fun ~original wp subs k -> match wp with
+  (f',x') info ->
+  (f,x) wit -> Re.substrings ->
+  (x -> r) -> (f -> r)
+  = fun ~original info w subs k -> match w with
     | Start  -> k
-    | PathAtom (rep, idx, rea) ->
+    | Atom (wit, idx, rea) ->
       let _, v = extract_atom ~original rea idx subs in
       let k f = k (f v) in
-      extract_path ~original rep subs k
-
-(** Query are in the right order, we can proceed in direct style. *)
-let rec extract_query
-  : type x r.
-    original:string ->
-    (x,r) re_query ->
-    int -> Re.substrings -> int array ->
-    x -> r
-  = fun ~original wq i subs permutation f -> match wq with
-    | Nil  -> f
-    | Any  -> f
-    | Cons (rea,req) ->
-      let subs_idx = permutation.(i) in
+      extract_url ~original info wit subs k
+    | Query (wit, name, rea) ->
+      let subs_idx = SMap.find name info.query_indices in
       let _, v = extract_atom ~original rea subs_idx subs in
-      extract_query ~original req (i+1) subs permutation (f v)
+      let k f = k (f v) in
+      extract_url ~original info wit subs k
 
-
-let extract_url
-  : type r f.
-    original:string ->
-    (f, r) re_url ->
-    Re.substrings -> f -> r
-  = fun ~original (ReUrl (wp, wq, permutation)) subs f ->
-    let k = extract_query ~original wq 0 subs permutation in
-    let r = extract_path ~original wp subs k f in
-    r
+let extract_url ~original info subs =
+  extract_url ~original info info.wit subs (fun x -> x)
 
 let prepare_uri uri =
   uri
@@ -457,12 +331,12 @@ let prepare_uri uri =
   |> Uri.path_and_query
 
 let extract url =
-  let re_url, re = re_url url in
-  let re = Re.(compile @@ whole_string re) in
+  let info = re_url url in
+  let re = Re.(compile @@ whole_string info.re) in
   fun ~f uri ->
     let s = prepare_uri uri in
     let subs = Re.exec re s in
-    extract_url ~original:s re_url subs f
+    extract_url ~original:s info subs f
 
 (** {4 Multiple match} *)
 
@@ -473,7 +347,7 @@ let route url f = Route (url, f)
 let (-->) = route
 
 type 'r re_ex =
-    ReEx : 'f * Re.markid * ('f, 'r) re_url -> 'r re_ex
+    ReEx : 'f * Re.markid * ('f, 'r) info -> 'r re_ex
 
 
 (* It's important to keep the order here, since Re will choose
@@ -483,9 +357,9 @@ let rec build_info_list = function
   | [] -> [], []
   | Route (url, f) :: l ->
     let rel, wl = build_info_list l in
-    let re_url, re = re_url url in
-    let id, re = Re.mark re in
-    re::rel, ReEx (f, id, re_url)::wl
+    let info = re_url url in
+    let id, re = Re.mark info.re in
+    re::rel, ReEx (f, id, info)::wl
 
 let rec find_and_trigger
   : type r. original:string -> Re.substrings -> r re_ex list -> r
@@ -493,8 +367,9 @@ let rec find_and_trigger
     | [] ->
       (* Invariant: At least one of the regexp of the alternative matches. *)
       assert false
-    | ReEx (f, id, re_url) :: l ->
-      if Re.marked subs id then extract_url ~original re_url subs f
+    | ReEx (f, id, info) :: l ->
+      if Re.marked subs id
+      then extract_url ~original info subs f
       else find_and_trigger ~original subs l
 
 let match_url
