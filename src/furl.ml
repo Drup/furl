@@ -48,7 +48,7 @@ end
 
 (* We need the constructors in scope,
    disambiguation doesn't work on GADTs. *)
-open Tyre.Internal
+module TI = Tyre.Internal
 open Types
 
 type ('f,'r) t = ('f,'r) url
@@ -89,14 +89,14 @@ let (~$) f = f ()
 
 let eval_atom p x = Tyre.(eval (Internal.to_t p) x)
 
-let rec eval_top_atom : type a. a raw -> a -> string list
+let rec eval_top_atom : type a. a TI.raw -> a -> string list
   = function
-  | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
-  | Rep p ->
+  | TI.Opt p -> (function None -> [] | Some x -> [eval_atom p x])
+  | TI.Rep p ->
     fun l -> Gen.to_list @@ Gen.map (eval_atom p) l
-  | Conv (_s, p, conv) ->
+  | TI.Conv (_s, p, conv) ->
     fun x -> eval_top_atom p (conv.from_ x)
-  | Mod (_,p) -> eval_top_atom p
+  | TI.Mod (_,p) -> eval_top_atom p
   | e -> fun x -> [eval_atom e x]
 
 let rec eval_raw
@@ -111,10 +111,10 @@ let rec eval_raw
       eval_raw p @@ fun h p' q' -> k h (s :: p') q'
     | PathAtom (p, a) ->
       eval_raw p @@ fun h p' q' x ->
-      k h (eval_top_atom (from_t a) x @ p') q'
+      k h (eval_top_atom (TI.from_t a) x @ p') q'
     | QueryAtom (p, s, a) ->
       eval_raw p @@ fun h p' q' x ->
-      k h p' ((s, eval_top_atom (from_t a) x) :: q')
+      k h p' ((s, eval_top_atom (TI.from_t a) x) :: q')
 
 let keval
   : ('a, 'b) url -> (Uri.t -> 'b) -> 'a
@@ -174,15 +174,15 @@ let re_atom re = Tyre.Internal.build re
 (** Top level atoms are specialized for path and query, see documentation. *)
 
 let re_atom_path
-  : type a . a raw -> int * a re_atom * Re.t
+  : type a . a TI.raw -> int * a re_atom * Re.t
   =
   let open Re in
   function
-    | Rep e ->
+    | TI.Rep e ->
       let grps, w, re = re_atom e in
       grps, Rep (w, Re.compile re),
       group @@ Furl_re.list ~component:`Path 0 @@ no_group re
-    | Opt e ->
+    | TI.Opt e ->
       let grps, w, re = re_atom e in
       let id, re = mark re in
       grps, Opt (id,grps,w),
@@ -192,11 +192,11 @@ let re_atom_path
       grps, w, seq [Furl_re.slash; re]
 
 let re_atom_query
-  : type a . a raw -> int * a re_atom * Re.t
+  : type a . a TI.raw -> int * a re_atom * Re.t
   =
   let open Re in
   function
-    | Rep e ->
+    | TI.Rep e ->
       let grps, w, re = re_atom e in
       grps, Rep (w, Re.compile re),
       group @@ Furl_re.list ~component:`Query_value 0 @@ no_group re
@@ -239,14 +239,14 @@ let rec make_witness
       str s :: Furl_re.slash :: re,
       qmap
     | PathAtom (p,a) ->
-      let grps, wa, ra = re_atom_path @@ from_t a in
+      let grps, wa, ra = re_atom_path @@ TI.from_t a in
       let path_grps, wp, rp, qmap = make_witness p in
       grps + path_grps,
       Atom (wp, path_grps, wa),
       ra :: rp,
       qmap
     | QueryAtom (p, s, a) ->
-      let grps_a, wa, ra = re_atom_query @@ from_t a in
+      let grps_a, wa, ra = re_atom_query @@ TI.from_t a in
       let grps, wp, rp, qmap = make_witness p in
       grps,
       Query (wp, s, wa),
