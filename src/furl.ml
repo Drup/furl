@@ -216,64 +216,66 @@ type ('f,'r) info = {
   wit : ('f, 'r) wit ;
   query_indices : int SMap.t ;
   re : Re.t ;
+  next_idx : int ;
 }
 
 (* Return:
-   - The number of groups
+   - The next group index for paths
    - The witness
    - A list of regular expression for each path segments in reverse order
    - A map of query parameters to regular expressions
 *)
 let rec make_witness
   : type r f .
-    (f, r) t ->
+    int -> (f, r) t ->
     int * (f, r) wit * Re.t list * (Re.t * int) SMap.t
-  = let open Re in function
+  = let open Re in fun idx_start -> function
     | Host s ->
       let re = Re.str @@ Uri.pct_encode ~component:`Host s in
-      1, Start, [re], SMap.empty
-    | Rel    -> 1, Start, [], SMap.empty
+      idx_start, Start, [re], SMap.empty
+    | Rel    -> idx_start, Start, [], SMap.empty
     | PathConst (p,s) ->
-      let grps, p, re, qmap = make_witness p in
+      let grps, p, re, qmap = make_witness idx_start p in
       grps, p,
       str s :: Furl_re.slash :: re,
       qmap
     | PathAtom (p,a) ->
       let grps, wa, ra = re_atom_path @@ TI.from_t a in
-      let path_grps, wp, rp, qmap = make_witness p in
+      let path_grps, wp, rp, qmap = make_witness idx_start p in
       grps + path_grps,
       Atom (wp, path_grps, wa),
       ra :: rp,
       qmap
     | QueryAtom (p, s, a) ->
       let grps_a, wa, ra = re_atom_query @@ TI.from_t a in
-      let grps, wp, rp, qmap = make_witness p in
+      let grps, wp, rp, qmap = make_witness idx_start p in
       grps,
       Query (wp, s, wa),
       rp,
       (SMap.add s (ra, grps_a) qmap)
 
 let re_url
-  : type f r. (f,r) t -> (f,r) info
-  = function url ->
-    let path_grps, wit, rp, qmap = make_witness url in
+  : type f r. int -> (f,r) t -> (f,r) info
+  = fun idx_start url ->
+    let next_path_idx, wit, rp, qmap = make_witness idx_start url in
     let end_path = Re.char '/' in
     if SMap.is_empty qmap then
+      let next_idx = next_path_idx in
       let re =
         let params = Re.(opt @@ seq [Re.char '?' ; rep any]) in
         let end_re = Re.(opt @@ seq [end_path; params]) in
         Re.seq @@ List.rev_append rp [end_path; end_re]
       in
-      { wit ; re ; query_indices = SMap.empty }
+      { wit ; re ; query_indices = SMap.empty ; next_idx }
     else
       let rql = SMap.bindings qmap in
       let rel = sort_query rql in
-      let query_indices, _ =
+      let query_indices, next_idx =
         List.fold_left
           (fun (m, offset) (name, (_, size)) ->
              (SMap.add name offset m), offset+size
           )
-          (SMap.empty, path_grps)
+          (SMap.empty, next_path_idx)
           rel
       in
 
@@ -291,7 +293,26 @@ let re_url
       let re =
         Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
       in
-      { wit ; re ; query_indices }
+      { wit ; re ; query_indices ; next_idx }
+
+(* let rec shift_groups_wit *)
+(*   : type f r. int -> (f, r) wit -> (f, r) wit *)
+(*   = fun i x -> match x with *)
+(*     | Start -> Start *)
+(*     | Atom (w,idx,re) -> *)
+(*       Atom (shift_groups_wit i w, i+idx, shift_groups_atoms i re) *)
+(*     | Query (w,s,re) -> *)
+(*       Query (shift_groups_wit i w, s, shift_groups_atoms i re) *)
+
+(* and shift_groups_atoms *)
+(*   : type r. int -> r re_atom -> r re_atom *)
+(*   = fun i x -> match x with *)
+(*     | TI.Regexp x -> (??) *)
+(*     | TI.Conv (_,_,_) -> (??) *)
+(*     | TI.Opt (_,_,_) -> (??) *)
+(*     | TI.Alt (_,_,_,_,_) -> (??) *)
+(*     | TI.Seq (_,_) -> (??) *)
+(*     | TI.Rep (_,_) -> (??) *)
 
 (** {3 Extraction.} *)
 
@@ -331,7 +352,7 @@ let prepare_uri uri =
   |> Uri.path_and_query
 
 let extract url =
-  let info = re_url url in
+  let info = re_url 1 url in
   let re = Re.(compile @@ whole_string info.re) in
   fun ~f uri ->
     let s = prepare_uri uri in
@@ -353,11 +374,11 @@ type 'r re_ex =
 (* It's important to keep the order here, since Re will choose
    the first regexp if there is ambiguity.
 *)
-let rec build_info_list = function
+let rec build_info_list idx = function
   | [] -> [], []
   | Route (url, f) :: l ->
-    let rel, wl = build_info_list l in
-    let info = re_url url in
+    let info = re_url idx url in
+    let rel, wl = build_info_list info.next_idx l in
     let id, re = Re.mark info.re in
     re::rel, ReEx (f, id, info)::wl
 
@@ -376,7 +397,7 @@ let match_url
   : type r.
     default:(Uri.t -> r) -> r route list -> Uri.t -> r
   = fun ~default l ->
-    let rel, wl = build_info_list l in
+    let rel, wl = build_info_list 1 l in
     let re = Re.(compile @@ whole_string @@ alt rel) in
     fun uri ->
       let s = prepare_uri uri in
