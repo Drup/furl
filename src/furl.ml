@@ -264,7 +264,7 @@ let re_url
       let re =
         let params = Re.(opt @@ seq [Re.char '?' ; rep any]) in
         let end_re = Re.(opt @@ seq [end_path; params]) in
-        Re.seq @@ List.rev_append rp [end_path; end_re]
+        Re.seq @@ List.rev_append rp [end_re]
       in
       { wit ; re ; query_indices = SMap.empty ; next_idx }
     else
