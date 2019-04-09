@@ -65,7 +65,6 @@ module Types = struct
 
 end
 
-
 (* We need the constructors in scope,
    disambiguation doesn't work on GADTs. *)
 open Tyre.Internal
@@ -180,7 +179,7 @@ let eval_top_atom : type a. a raw -> a -> string list
   = function
   | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
   | Rep p ->
-    fun l -> Gen.to_list @@ Gen.map (eval_atom p) l
+    fun l -> List.of_seq @@ Seq.map (eval_atom p) l
   | e -> fun x -> [eval_atom e x]
 
 let rec eval_path
@@ -271,33 +270,33 @@ let re_atom re = Tyre.Internal.build re
 (** Top level atoms are specialized for path and query, see documentation. *)
 
 let re_atom_path
-  : type a . a raw -> int * a re_atom * Re.t
+  : type a . int -> a raw -> int * a re_atom * Re.t
   =
   let open Re in
-  function
+  fun i -> function
     | Rep e ->
-      let grps, w, re = re_atom e in
-      grps, Rep (w, Re.compile re),
+      let _, w, re = re_atom 1 e in
+      (i+1), Rep (i, w, Re.compile re),
       group @@ Furl_re.list ~component:`Path 0 @@ no_group re
     | Opt e ->
-      let grps, w, re = re_atom e in
+      let grps, w, re = re_atom i e in
       let id, re = mark re in
-      grps, Opt (id,grps,w),
+      grps, Opt (id,w),
       seq [alt [epsilon ; seq [Furl_re.slash ; re]]]
     | e ->
-      let grps, w, re = re_atom e in
+      let grps, w, re = re_atom i e in
       grps, w, seq [Furl_re.slash; re]
 
 let re_atom_query
-  : type a . a raw -> int * a re_atom * Re.t
+  : type a . int -> a raw -> int * a re_atom * Re.t
   =
   let open Re in
-  function
+  fun i -> function
     | Rep e ->
-      let grps, w, re = re_atom e in
-      grps, Rep (w, Re.compile re),
+      let grps, w, re = re_atom 1 e in
+      grps, Rep (i, w, Re.compile re),
       group @@ Furl_re.list ~component:`Query_value 0 @@ no_group re
-    | e -> re_atom e
+    | e -> re_atom i e
 
 
 type (_,_) re_path =
@@ -320,7 +319,7 @@ let rec re_path
       grps, p,
       str s :: Furl_re.slash :: re
     | PathAtom (p,a) ->
-      let grps, wa, ra = re_atom_path @@ from_t a in
+      let grps, wa, ra = re_atom_path 1 @@ from_t a in
       let (path_grps, wp, rp) = re_path p in
       grps + path_grps,
       PathAtom (wp, path_grps, wa),
@@ -342,7 +341,7 @@ let rec re_query
     | Nil -> Nil, false, []
     | Any -> Any, true,  []
     | QueryAtom (s,a,q) ->
-      let grps, wa, ra = re_atom_query @@ from_t a in
+      let grps, wa, ra = re_atom_query 1 @@ from_t a in
       let wq, b_any, rq = re_query q in
       Cons (wa, wq), b_any, (s, (ra, grps)) :: rq
 
@@ -379,7 +378,7 @@ let re_url
           build_permutation path_grps (fun (_,(_,i)) -> i) rql rel
         in
 
-        let query_sep = Furl_re.query_sep any_query in
+        let query_sep = Furl_re.query_sep ~any:any_query in
         let add_around_query =
           if not any_query then fun x -> x
           else fun l -> Re.(rep any) :: l
@@ -418,8 +417,8 @@ let rec extract_path
       (f -> r)
   = fun ~original wp subs k -> match wp with
     | Start  -> k
-    | PathAtom (rep, idx, rea) ->
-      let _, v = extract_atom ~original rea idx subs in
+    | PathAtom (rep, _idx, rea) ->
+      let v = extract_atom ~original rea subs in
       let k f = k (f v) in
       extract_path ~original rep subs k
 
@@ -434,8 +433,8 @@ let rec extract_query
     | Nil  -> f
     | Any  -> f
     | Cons (rea,req) ->
-      let subs_idx = permutation.(i) in
-      let _, v = extract_atom ~original rea subs_idx subs in
+      (* let subs_idx = permutation.(i) in *)
+      let v = extract_atom ~original rea subs in
       extract_query ~original req (i+1) subs permutation (f v)
 
 

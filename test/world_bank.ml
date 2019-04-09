@@ -9,6 +9,6 @@
 (** Common parameters.
     These parameters are used by all calls.
 *)
-let general_params () = Furl.(
-    ("date", String) **
-      ("format",
+(* let general_params () = Furl.( *)
+(*     ("date", String) ** *)
+(*       ("format", *)

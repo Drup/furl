@@ -1,0 +1,9 @@
+(executable
+  (name test)
+  (libraries furl))
+
+(alias
+  (name runtest)
+  (deps test.exe)
+  (action
+    (run %{exe:test.exe})))
