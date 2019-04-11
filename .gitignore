@@ -5,3 +5,5 @@ lilis.html
 setup.data
 setup.exe
 setup.log
+*.merlin
+*.install

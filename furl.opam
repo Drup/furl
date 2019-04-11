@@ -1,0 +1,26 @@
+opam-version: "2.0"
+name: "furl"
+version: "dev"
+maintainer: "Gabriel Radanne <drupyog@zoho.com>"
+authors: "Gabriel Radanne <drupyog@zoho.com>"
+homepage: "https://github.com/Drup/furl"
+bug-reports: "https://github.com/Drup/furl/issues"
+license: "MIT"
+dev-repo: "git+https://github.com/Drup/furl.git"
+tags: [ "url" "routing" "http" ]
+
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] { with-test }
+]
+
+depends: [
+  "ocaml" { >= "4.03.0" }
+  "dune" { build }
+  "uri"
+  "tyre" { >= "0.4.1" }
+  "re"
+  "seq"
+]
+synopsis: "Functorial URLs"

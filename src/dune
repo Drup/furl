@@ -1,0 +1,4 @@
+(library
+  (name furl)
+  (public_name furl)
+  (libraries uri seq tyre))

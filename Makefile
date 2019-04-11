@@ -1,41 +1,33 @@
-# OASIS_START
-# DO NOT EDIT (digest: a3c674b4239234cbbe53afe090018954)
+.PHONY: default
+default: build
 
-SETUP = ocaml setup.ml
+.PHONY: build
+build: 
+	dune build @install
 
-build: setup.data
-	$(SETUP) -build $(BUILDFLAGS)
+.PHONY: test
+test:
+	dune runtest
 
-doc: setup.data build
-	$(SETUP) -doc $(DOCFLAGS)
-
-test: setup.data build
-	$(SETUP) -test $(TESTFLAGS)
-
-all:
-	$(SETUP) -all $(ALLFLAGS)
-
-install: setup.data
-	$(SETUP) -install $(INSTALLFLAGS)
-
-uninstall: setup.data
-	$(SETUP) -uninstall $(UNINSTALLFLAGS)
-
-reinstall: setup.data
-	$(SETUP) -reinstall $(REINSTALLFLAGS)
-
+.PHONY: clean
 clean:
-	$(SETUP) -clean $(CLEANFLAGS)
+	dune clean
 
-distclean:
-	$(SETUP) -distclean $(DISTCLEANFLAGS)
+.PHONY: doc
+doc:
+	dune build @doc
 
-setup.data:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
+NAME=furl
+DOCDIR=.gh-pages
 
-configure:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
+$(DOCDIR)/.git:
+	mkdir -p $(DOCDIR)
+	cd $(DOCDIR) && (\
+		git clone -b gh-pages git@github.com:Drup/$(NAME).git . \
+	)
 
-.PHONY: build doc test all install uninstall reinstall clean distclean configure
-
-# OASIS_STOP
+gh-pages: $(DOCDIR)/.git doc
+	cp -r _build/default/_doc/_html/* $(DOCDIR)/doc/dev/
+	git -C $(DOCDIR) add --all 
+	git -C $(DOCDIR) commit -a -m "gh-page updates"
+	git -C $(DOCDIR) push origin gh-pages
