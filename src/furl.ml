@@ -279,13 +279,13 @@ let re_atom_path
       (i+1), Rep (i, w, Re.compile re),
       group @@ Furl_re.list ~component:`Path 0 @@ no_group re
     | Opt e ->
-      let grps, w, re = re_atom i e in
+      let i', w, re = re_atom i e in
       let id, re = mark re in
-      grps, Opt (id,w),
+      i', Opt (id,w),
       seq [alt [epsilon ; seq [Furl_re.slash ; re]]]
     | e ->
-      let grps, w, re = re_atom i e in
-      grps, w, seq [Furl_re.slash; re]
+      let i', w, re = re_atom i e in
+      i', w, seq [Furl_re.slash; re]
 
 let re_atom_query
   : type a . int -> a raw -> int * a re_atom * Re.t
@@ -293,8 +293,8 @@ let re_atom_query
   let open Re in
   fun i -> function
     | Rep e ->
-      let grps, w, re = re_atom 1 e in
-      grps, Rep (i, w, Re.compile re),
+      let _, w, re = re_atom 1 e in
+      (i+1), Rep (i, w, Re.compile re),
       group @@ Furl_re.list ~component:`Query_value 0 @@ no_group re
     | e -> re_atom i e
 
@@ -302,27 +302,27 @@ let re_atom_query
 type (_,_) re_path =
   | Start : ('r,'r) re_path
   | PathAtom :
-       ('f, 'a -> 'r) re_path * int * 'a re_atom
+       ('f, 'a -> 'r) re_path * 'a re_atom
     -> ('f,       'r) re_path
 
 let rec re_path
   : type r f .
-    (f, r) Path.t ->
+    int -> (f, r) Path.t ->
     int * (f, r) re_path * Re.t list
-  = let open Re in function
+  = let open Re in fun i -> function
     | Host s ->
       let re = Re.str @@ Uri.pct_encode ~component:`Host s in
-      1, Start, [re]
-    | Rel    -> 1, Start, []
+      i, Start, [re]
+    | Rel    -> i, Start, []
     | PathConst (p,s) ->
-      let (grps, p, re) = re_path p in
-      grps, p,
+      let i', p, re = re_path i p in
+      i', p,
       str s :: Furl_re.slash :: re
     | PathAtom (p,a) ->
-      let grps, wa, ra = re_atom_path 1 @@ from_t a in
-      let (path_grps, wp, rp) = re_path p in
-      grps + path_grps,
-      PathAtom (wp, path_grps, wa),
+      let i', wp, rp = re_path i p in
+      let i'', wa, ra = re_atom_path i' @@ from_t a in
+      i'',
+      PathAtom (wp, wa),
       ra :: rp
 
 
@@ -333,7 +333,7 @@ type ('fu,'ret) re_query =
       'a re_atom * ('f,'r) re_query
     -> ('a -> 'f,'r) re_query
 
-let rec re_query
+let rec collect_re_query
   : type r f .
     (f, r) Query.t ->
     (f, r) re_query * bool * (string * (Re.t * int)) list
@@ -341,15 +341,42 @@ let rec re_query
     | Nil -> Nil, false, []
     | Any -> Any, true,  []
     | QueryAtom (s,a,q) ->
-      let grps, wa, ra = re_atom_query 1 @@ from_t a in
-      let wq, b_any, rq = re_query q in
+      let grps, wa, ra = re_atom_query 0 @@ from_t a in
+      let wq, b_any, rq = collect_re_query q in
       Cons (wa, wq), b_any, (s, (ra, grps)) :: rq
 
+let rec shift_lits : type a . int -> a re_atom -> a re_atom =
+  fun shift -> function
+    | Lit i -> Lit (i+shift)
+    | Conv (x, f) -> Conv (shift_lits shift x, f)
+    | Opt (m, x) -> Opt (m, shift_lits shift x)
+    | Alt (m, x1, x2) -> Alt (m, shift_lits shift x1, shift_lits shift x2)
+    | Seq (x1, x2) -> Seq (shift_lits shift x1, shift_lits shift x2)
+    | Rep (i, x, r) -> Rep (shift+i, x, r)
+
+let rec permut_query :
+  type r f . int -> int array -> (r, f) re_query -> (r, f) re_query =
+  fun n permutation -> function
+    | Nil -> Nil
+    | Any -> Any
+    | Cons (wa, wq) ->
+      let shift = permutation.(n) in
+      let wa = shift_lits shift wa in
+      Cons (wa, permut_query (n+1) permutation wq)
+
+let re_query current_idx q =
+  let wq, b, rql = collect_re_query q in
+  let rel = sort_query rql in
+  let p =
+    build_permutation current_idx (fun (_,(_,i)) -> i) rql rel
+  in
+  let wq = permut_query 0 p wq in
+  wq, b, rel
 
 type ('f,'r) re_url =
   | ReUrl :
        ('f, 'x    ) re_path
-     * (    'x, 'r) re_query * int array
+     * (    'x, 'r) re_query
     -> ('f,     'r) re_url
 
 let re_url
@@ -360,24 +387,20 @@ let re_url
       | Slash -> Re.char '/'
       | MaybeSlash -> Re.(opt @@ char '/')
     in
-    let path_grps, wp, rp = re_path p in
-    match q with
+    let idx, wp, rp = re_path 1 p in
+    match q with 
       | Nil ->
-        ReUrl (wp, Nil, [||]),
+        ReUrl (wp, Nil),
         Re.seq @@ List.rev (end_path :: rp)
 
       | Any ->
         let end_re = Re.(opt @@ seq [Re.char '?' ; rep any]) in
-        ReUrl (wp, Nil, [||]),
+        ReUrl (wp, Nil),
         Re.seq @@ List.rev_append rp [end_path; end_re]
 
       | _ ->
-        let (wq, any_query, rql) = re_query q in
-        let rel = sort_query rql in
-        let t =
-          build_permutation path_grps (fun (_,(_,i)) -> i) rql rel
-        in
-
+        let wq, any_query, rel = re_query idx q in
+ 
         let query_sep = Furl_re.query_sep ~any:any_query in
         let add_around_query =
           if not any_query then fun x -> x
@@ -394,8 +417,10 @@ let re_url
           |> List.rev
           |> add_around_query
         in
-        ReUrl(wp,wq,t),
-        Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
+        let re = 
+          Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
+        in
+        ReUrl(wp,wq), re
 
 let get_re url = snd @@ re_url url
 
@@ -412,12 +437,12 @@ let rec extract_path
   : type f x r.
     original:string ->
     (f,x) re_path ->
-    Re.substrings ->
+    Re.Group.t ->
     (x -> r) ->
-      (f -> r)
+    (f -> r)
   = fun ~original wp subs k -> match wp with
     | Start  -> k
-    | PathAtom (rep, _idx, rea) ->
+    | PathAtom (rep, rea) ->
       let v = extract_atom ~original rea subs in
       let k f = k (f v) in
       extract_path ~original rep subs k
@@ -427,26 +452,25 @@ let rec extract_query
   : type x r.
     original:string ->
     (x,r) re_query ->
-    int -> Re.substrings -> int array ->
+    Re.Group.t ->
     x -> r
-  = fun ~original wq i subs permutation f -> match wq with
+  = fun ~original wq subs f -> match wq with
     | Nil  -> f
     | Any  -> f
     | Cons (rea,req) ->
-      (* let subs_idx = permutation.(i) in *)
       let v = extract_atom ~original rea subs in
-      extract_query ~original req (i+1) subs permutation (f v)
+      extract_query ~original req subs (f v)
 
 
 let extract_url
   : type r f.
     original:string ->
     (f, r) re_url ->
-    Re.substrings -> f -> r
-  = fun ~original (ReUrl (wp, wq, permutation)) subs f ->
-    let k = extract_query ~original wq 0 subs permutation in
-    let r = extract_path ~original wp subs k f in
-    r
+    Re.Group.t -> f -> r
+  = fun ~original (ReUrl (wp, wq)) subs f ->
+    let k = extract_query ~original wq subs in
+    let k = extract_path ~original wp subs k in
+    k f
 
 let prepare_uri uri =
   uri
@@ -472,7 +496,7 @@ let route url f = Route (url, f)
 let (-->) = route
 
 type 'r re_ex =
-    ReEx : 'f * Re.markid * ('f, 'r) re_url -> 'r re_ex
+    ReEx : 'f * Re.Mark.t * ('f, 'r) re_url -> 'r re_ex
 
 
 (* It's important to keep the order here, since Re will choose
@@ -487,13 +511,13 @@ let rec build_info_list = function
     re::rel, ReEx (f, id, re_url)::wl
 
 let rec find_and_trigger
-  : type r. original:string -> Re.substrings -> r re_ex list -> r
+  : type r. original:string -> Re.Group.t -> r re_ex list -> r
   = fun ~original subs -> function
     | [] ->
       (* Invariant: At least one of the regexp of the alternative matches. *)
       assert false
     | ReEx (f, id, re_url) :: l ->
-      if Re.marked subs id then extract_url ~original re_url subs f
+      if Re.Mark.test subs id then extract_url ~original re_url subs f
       else find_and_trigger ~original subs l
 
 let match_url
