@@ -179,7 +179,7 @@ let eval_top_atom : type a. a raw -> a -> string list
   = function
   | Opt p -> (function None -> [] | Some x -> [eval_atom p x])
   | Rep p ->
-    fun l -> List.of_seq @@ Seq.map (eval_atom p) l
+    fun l -> Seq.to_list @@ Seq.map (eval_atom p) l
   | e -> fun x -> [eval_atom e x]
 
 let rec eval_path
