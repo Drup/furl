@@ -19,7 +19,7 @@ depends: [
   "ocaml" { >= "4.03.0" }
   "dune" { build }
   "uri"
-  "tyre"
+  "tyre" { >= "0.4.1" }
   "re"
   "seq"
 ]
