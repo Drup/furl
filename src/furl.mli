@@ -62,20 +62,22 @@ module Path : sig
   type ('fu, 'return) t =
     ('fu, 'return) Types.path
 
-  val host : string -> ('a, 'a) t [@@pure]
+  [@@@pure]
+
+  val host : string -> ('a, 'a) t
   (** [host "www.ocaml.org"] ≡ [//www.ocaml.org] *)
 
-  val relative : ('a, 'a) t [@@pure]
+  val relative : ('a, 'a) t
   (** [relative] is the start of a relative url. *)
 
   val add :
     ('f,'r) t -> string ->
-    ('f,'r) t [@@pure]
+    ('f,'r) t
   (** [add path "foo"] ≡ [<path>/foo]. *)
 
   val add_atom :
     ('f,'a -> 'r) t -> 'a Tyre.t ->
-    ('f,      'r) t [@@pure]
+    ('f,      'r) t
   (** [add_atom path atom] ≡ [<path>/<atom>].
       See the documentation of {!atom} for more details.
   *)
@@ -83,7 +85,7 @@ module Path : sig
   val concat :
     ('f, 'x     ) t ->
     (    'x, 'r) t ->
-    ('f,     'r) t [@@pure]
+    ('f,     'r) t
     (** [concat p1 p2] ≡ [<p1>/<p2>].
         If [p2] starts by a host name, the host is discarded.
     *)
@@ -95,16 +97,18 @@ module Query : sig
   type ('fu, 'return) t =
     ('fu, 'return) Types.query
 
-  val nil : ('a, 'a) t [@@pure]
+  [@@@pure]
+
+  val nil : ('a, 'a) t
   (** The empty query. *)
 
-  val any : ('a, 'a) t [@@pure]
+  val any : ('a, 'a) t
   (** Any query parameter. *)
 
   val add :
     string -> 'a Tyre.t ->
     (      'f,'r) t ->
-    ('a -> 'f,'r) t [@@pure]
+    ('a -> 'f,'r) t
   (** [add "myparam" atom query] ≡ [myparam=<atom>&<query>].
       See {!atom} documentation for more details.
   *)
@@ -112,7 +116,7 @@ module Query : sig
   val concat :
     ('f, 'x    ) t ->
     (    'x, 'r) t ->
-    ('f,     'r) t [@@pure]
+    ('f,     'r) t
     (** [concat q1 q2] ≡ [<q1>&<q2>]. *)
 
 end
@@ -124,71 +128,77 @@ module Url : sig
 
   type slash = Types.slash = Slash | NoSlash | MaybeSlash
 
+  [@@@pure]
+
   val make :
     ?slash:slash ->
     ('f, 'x    ) Path.t ->
     (    'x, 'r) Query.t ->
-    ('f,     'r) t [@@pure]
+    ('f,     'r) t
 
   (** [prefix_path p r] is the route formed by the concatenation of [p] and [r]. *)
   val prefix_path :
     ('a, 'b    ) Path.t ->
     (    'b, 'e) t ->
-    ('a,     'e) t [@@pure]
+    ('a,     'e) t
 
   (** [add_query q r] is the route formed by the concatenation of [r] and [q]. *)
   val add_query :
     (    'a, 'b) Query.t ->
     ('e, 'a    ) t ->
-    ('e,     'b) t [@@pure]
+    ('e,     'b) t
 
 end
 
 (** {2 Combinators} *)
 
-val rel : ('r, 'r) Path.t [@@pure]
+[@@@pure]
 
-val host : string -> ('r, 'r) Path.t [@@pure]
+val rel : ('r, 'r) Path.t
+
+val host : string -> ('r, 'r) Path.t
 
 val (/) :
   ('f,'r) Path.t -> string ->
-  ('f,'r) Path.t [@@pure]
+  ('f,'r) Path.t
 
 val (/%) :
   ('f,'a -> 'r) Path.t -> 'a Tyre.t ->
-  ('f,      'r) Path.t [@@pure]
+  ('f,      'r) Path.t
 
-val nil : ('r, 'r) Query.t [@@pure]
+val nil : ('r, 'r) Query.t
 
-val any : ('r, 'r) Query.t [@@pure]
+val any : ('r, 'r) Query.t
 
 val ( ** ) :
   string * 'a Tyre.t ->
   (      'f,'r) Query.t ->
-  ('a -> 'f,'r) Query.t [@@pure]
+  ('a -> 'f,'r) Query.t
 
 val (/?) :
   ('f, 'x     ) Path.t ->
   (    'x, 'r) Query.t ->
-  ('f,     'r) Url.t [@@pure]
+  ('f,     'r) Url.t
 
 
 val (//?) :
   ('f, 'x    ) Path.t ->
   (    'x, 'r) Query.t ->
-  ('f,     'r) Url.t [@@pure]
+  ('f,     'r) Url.t
 
 
 val (/??) :
   ('f, 'x    ) Path.t ->
   (    'x, 'r) Query.t ->
-  ('f,     'r) Url.t [@@pure]
+  ('f,     'r) Url.t
 
 
 (** An url with an empty list of converters.
     It can be evaluated/extracted/matched against.
  *)
 type ('f, 'r) t = ('f, 'r) Url.t
+
+[@@@impure]
 
 val keval : ('f, 'r) t -> (Uri.t -> 'r) -> 'f
 val eval : ('f, Uri.t) t -> 'f
