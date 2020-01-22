@@ -86,7 +86,7 @@ module Path = struct
     : type f r x.
       (f,x  ) t ->
       (  x,r) t ->
-      (f,  r) t
+      (f,  r) t [@pure]
     = fun p1 p2 -> match p2 with
       | Host _ -> p1
       | Rel  -> p1
@@ -105,7 +105,7 @@ module Query = struct
   let add n x query = QueryAtom (n,x,query)
 
   let rec make_any
-    : type f r . (f,r) t -> (f,r) t
+    : type f r . (f,r) t -> (f,r) t [@pure]
     = function
       | Nil -> Any
       | Any -> Any
@@ -115,7 +115,7 @@ module Query = struct
     : type f r x.
       (f,x  ) t ->
       (  x,r) t ->
-      (f,  r) t
+      (f,  r) t [@pure]
     = fun q1 q2 -> match q1 with
       | Nil  -> q2
       | Any  -> make_any q2
