@@ -2,13 +2,13 @@ open Tyre
 
 let string = regex Re.(rep1 @@ compl [char '/'])
 
-let camlidae () = Furl.host "www.camlidae.ml"
+let camlidae = Furl.host "www.camlidae.ml"
 
-let by_name () =
-  Furl.(camlidae() / "name" /% string /? nil)
+let by_name =
+  Furl.(camlidae / "name" /% string /? nil)
 
-let by_humps () =
-  Furl.(camlidae() / "humps" /% int /? ("extinct",opt bool) ** nil)
+let by_humps =
+  Furl.(camlidae / "humps" /% int /? ("extinct",opt bool) ** nil)
 
 type camlidae = {
   name : string ;
@@ -36,8 +36,12 @@ let handle_camlidaes =
   Furl.(match_url
       ~default:(fun _uri -> failwith "This is not a camlidae.")
       [
-        by_name()  --> handle_by_name ;
-        by_humps() --> handle_by_hump ;
+        by_name  --> handle_by_name ;
+        by_humps --> handle_by_hump ;
       ])
 
-let query_by_humps = Furl.eval @@ by_humps ()
+let query_by_humps = Furl.eval @@ by_humps
+
+let uri = query_by_humps 1 None
+
+let s = handle_camlidaes uri
