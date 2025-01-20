@@ -270,22 +270,22 @@ let re_atom re = Tyre.Internal.build re
 (** Top level atoms are specialized for path and query, see documentation. *)
 
 let re_atom_path
-  : type a . int -> a raw -> int * a re_atom * Re.t
+  : type a . int -> a raw -> int * a re_atom * Re.t list
   =
   let open Re in
   fun i -> function
     | Rep e ->
       let _, w, re = re_atom 1 e in
       (i+1), Rep (i, w, Re.compile re),
-      group @@ Furl_re.list ~component:`Path 0 @@ no_group re
+      [group @@ Furl_re.list ~component:`Path 0 @@ no_group re]
     | Opt e ->
       let i', w, re = re_atom i e in
       let id, re = mark re in
       i', Opt (id,w),
-      seq [alt [epsilon ; seq [Furl_re.slash ; re]]]
+      [alt [epsilon ; seq [Furl_re.slash ; re]]]
     | e ->
       let i', w, re = re_atom i e in
-      i', w, seq [Furl_re.slash; re]
+      i', w, [Furl_re.slash; re]
 
 let re_atom_query
   : type a . int -> a raw -> int * a re_atom * Re.t
@@ -323,7 +323,7 @@ let rec re_path
       let i'', wa, ra = re_atom_path i' @@ from_t a in
       i'',
       PathAtom (wp, wa),
-      ra :: rp
+      List.rev_append ra rp
 
 
 type ('fu,'ret) re_query =
@@ -336,14 +336,15 @@ type ('fu,'ret) re_query =
 let rec collect_re_query
   : type r f .
     (f, r) Query.t ->
-    (f, r) re_query * bool * (string * (Re.t * int)) list
+    int * (f, r) re_query * bool * (string * (Re.t * int)) list
   = function
-    | Nil -> Nil, false, []
-    | Any -> Any, true,  []
+    | Nil -> 0, Nil, false, []
+    | Any -> 0, Any, true,  []
     | QueryAtom (s,a,q) ->
       let grps, wa, ra = re_atom_query 0 @@ from_t a in
-      let wq, b_any, rq = collect_re_query q in
-      Cons (wa, wq), b_any, (s, (ra, grps)) :: rq
+      let total_grps, wq, b_any, rq = collect_re_query q in
+      let total_grps = total_grps+grps in
+      total_grps, Cons (wa, wq), b_any, (s, (ra, grps)) :: rq
 
 let rec shift_lits : type a . int -> a re_atom -> a re_atom =
   fun shift -> function
@@ -365,13 +366,13 @@ let rec permut_query :
       Cons (wa, permut_query (n+1) permutation wq)
 
 let re_query current_idx q =
-  let wq, b, rql = collect_re_query q in
+  let grps, wq, b, rql = collect_re_query q in
   let rel = sort_query rql in
   let p =
     build_permutation current_idx (fun (_,(_,i)) -> i) rql rel
   in
   let wq = permut_query 0 p wq in
-  wq, b, rel
+  grps, wq, b, rel
 
 type ('f,'r) re_url =
   | ReUrl :
@@ -380,26 +381,28 @@ type ('f,'r) re_url =
     -> ('f,     'r) re_url
 
 let re_url
-  : type f r. (f,r) Url.t -> (f,r) re_url * Re.t
-  = function Url(slash,p,q) ->
+  : type f r. int -> (f,r) Url.t -> int * (f,r) re_url * Re.t
+  = fun i -> function Url(slash,p,q) ->
     let end_path = match slash with
       | NoSlash -> Re.epsilon
       | Slash -> Re.char '/'
       | MaybeSlash -> Re.(opt @@ char '/')
     in
-    let idx, wp, rp = re_path 1 p in
+    let idx, wp, rp = re_path i p in
     match q with 
       | Nil ->
+        idx,
         ReUrl (wp, Nil),
         Re.seq @@ List.rev (end_path :: rp)
 
       | Any ->
         let end_re = Re.(opt @@ seq [Re.char '?' ; rep any]) in
+        idx,
         ReUrl (wp, Nil),
         Re.seq @@ List.rev_append rp [end_path; end_re]
 
       | _ ->
-        let wq, any_query, rel = re_query idx q in
+        let grps, wq, any_query, rel = re_query idx q in
  
         let query_sep = Furl_re.query_sep ~any:any_query in
         let add_around_query =
@@ -420,9 +423,9 @@ let re_url
         let re = 
           Re.seq @@ List.rev_append rp (end_path :: Re.char '?' :: re)
         in
-        ReUrl(wp,wq), re
+        idx+grps, ReUrl(wp,wq), re
 
-let get_re url = snd @@ re_url url
+let get_re url = let _, _, re = re_url 1 url in re
 
 (** {3 Extraction.} *)
 
@@ -480,7 +483,7 @@ let prepare_uri uri =
   |> Uri.path_and_query
 
 let extract url =
-  let re_url, re = re_url url in
+  let _idx, re_url, re = re_url 1 url in
   let re = Re.(compile @@ whole_string re) in
   fun ~f uri ->
     let s = prepare_uri uri in
@@ -502,11 +505,11 @@ type 'r re_ex =
 (* It's important to keep the order here, since Re will choose
    the first regexp if there is ambiguity.
 *)
-let rec build_info_list = function
+let rec build_info_list idx = function
   | [] -> [], []
   | Route (url, f) :: l ->
-    let rel, wl = build_info_list l in
-    let re_url, re = re_url url in
+    let idx, re_url, re = re_url idx url in
+    let rel, wl = build_info_list idx l in
     let id, re = Re.mark re in
     re::rel, ReEx (f, id, re_url)::wl
 
@@ -524,12 +527,14 @@ let match_url
   : type r.
     default:(Uri.t -> r) -> r route list -> Uri.t -> r
   = fun ~default l ->
-    let rel, wl = build_info_list l in
+    let rel, wl = build_info_list 1 l in
     let re = Re.(compile @@ whole_string @@ alt rel) in
+    (* Format.eprintf "%a" Re.pp (Re.alt rel); *)
     fun uri ->
       let s = prepare_uri uri in
-      try
-        let subs = Re.exec re s in
-        find_and_trigger ~original:s subs wl
-      with
-          Not_found -> default uri
+      match Re.exec_opt re s with
+      | None -> default uri
+      | Some subs ->
+        try find_and_trigger ~original:s subs wl
+        with Not_found ->
+          assert false
