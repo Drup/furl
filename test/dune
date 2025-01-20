@@ -1,3 +1,7 @@
 (tests
   (names test)
+ (libraries furl))
+
+(executable
+  (name confused_routes)
   (libraries furl))
