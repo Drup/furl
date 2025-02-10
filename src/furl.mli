@@ -62,6 +62,8 @@ module Path : sig
   type ('fu, 'return) t =
     ('fu, 'return) Types.path
 
+  [@@@pure]
+
   val host : string -> ('a, 'a) t
   (** [host "www.ocaml.org"] ≡ [//www.ocaml.org] *)
 
@@ -95,6 +97,8 @@ module Query : sig
   type ('fu, 'return) t =
     ('fu, 'return) Types.query
 
+  [@@@pure]
+
   val nil : ('a, 'a) t
   (** The empty query. *)
 
@@ -124,6 +128,8 @@ module Url : sig
 
   type slash = Types.slash = Slash | NoSlash | MaybeSlash
 
+  [@@@pure]
+
   val make :
     ?slash:slash ->
     ('f, 'x    ) Path.t ->
@@ -145,6 +151,8 @@ module Url : sig
 end
 
 (** {2 Combinators} *)
+
+[@@@pure]
 
 val rel : ('r, 'r) Path.t
 
@@ -190,6 +198,8 @@ val (/??) :
  *)
 type ('f, 'r) t = ('f, 'r) Url.t
 
+[@@@impure]
+
 val keval : ('f, 'r) t -> (Uri.t -> 'r) -> 'f
 val eval : ('f, Uri.t) t -> 'f
 
@@ -198,14 +208,14 @@ val extract : ('f, 'r) t -> f:'f -> Uri.t -> 'r
 val get_re : _ t -> Re.t
 
 type 'r route
-val route : ('f, 'r) t -> 'f -> 'r route
+val route : ('f, 'r) t -> 'f -> 'r route [@@pure]
 
-val (-->) : ('f, 'r) t -> 'f -> 'r route
+val (-->) : ('f, 'r) t -> 'f -> 'r route [@@pure]
 
 val match_url : default:(Uri.t -> 'r) -> 'r route list -> Uri.t -> 'r
 
 
 (** {2 Utils} *)
 
-val (~$) : (unit -> 'a) -> 'a
+val (~$) : (unit -> 'a) -> 'a [@@pure]
 (** [~$f] ≡ [f()]. Often allow to remove parens. *)
